@@ -277,7 +277,7 @@ export class VerificationService {
     userId: Types.ObjectId,
     expirationMinutes: number,
     email: string,
-    id: number,
+    id: string,
     role: string,
   ) {
     // const verificationToken = uuidv4();
@@ -314,7 +314,7 @@ export class VerificationService {
   }
 
   async sendVerificationEmail(verificationToken: string, mailAddress: any) {
-    const verificationUrl = `https://yourdomain.com/verify?token=${verificationToken}`;
+    const verificationUrl = `https://yourdomain.com/auth/verification/confirm-verify?token=${verificationToken}`;
     const message = `Please verify your email by clicking the following link: ${verificationUrl}`;
 
     // Your email sending logic

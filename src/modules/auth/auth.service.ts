@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UserService } from 'src/modules/user/user.service';
 import { CreateUserDto } from '../user/dto/create-user.dto';
@@ -16,6 +16,13 @@ export class AuthService {
     const user = await this.usersService.findOne(username);
     const isPasswordMatch = await bcrypt.compare(pass, user.password);
 
+    if (!isPasswordMatch) {
+      throw new BadRequestException('Incorrect email or password');
+    }
+    if (!user.email_verified) {
+      throw new BadRequestException('Please verify account to continue');
+    }
+
     if (user && isPasswordMatch) {
       const { password, ...result } = user;
       return result;
@@ -24,7 +31,7 @@ export class AuthService {
   }
 
   async login(user: any) {
-    const payload = { username: user.email, sub: user.id };
+    const payload = { username: user.email, sub: user.id, role: user.role };
     return {
       access_token: this.jwtService.sign(payload),
     };
@@ -37,6 +44,12 @@ export class AuthService {
 
   async verifyAccount(verificationToken: string): Promise<any> {
     const verification = await this.usersService.verifyUser(verificationToken);
+    return verification;
+  }
+
+  async reverifyAccount(verificationToken: string): Promise<any> {
+    const verification =
+      await this.usersService.resendVerifyUser(verificationToken);
     return verification;
   }
 

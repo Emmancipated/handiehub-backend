@@ -77,6 +77,11 @@ export class AuthController {
     return this.authService.verifyAccount(token);
   }
 
+  @Get('resend-verification')
+  resendverifyUser(@Query('email') email: string) {
+    return this.authService.reverifyAccount(email);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('profile')
   getProfile(@Request() req) {

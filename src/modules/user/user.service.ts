@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpStatus,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -49,8 +50,8 @@ export class UserService {
 
   async createUser(
     createUserDto: CreateUserDto,
-  ): Promise<User | { message: string }> {
-    const { id, first_name, last_name, email, password, role } = createUserDto;
+  ): Promise<User | { statusCode: number; message: string }> {
+    const { first_name, last_name, email, password, role } = createUserDto;
     try {
       const existingUserByEmail = await this.userModel
         .findOne({
@@ -66,19 +67,21 @@ export class UserService {
         }
         throw new BadRequestException('Email is already in use');
       }
+
+      // Create new user
+      const salt = await bcrypt.genSalt();
+      const hashedPassword = await bcrypt.hash(password, salt);
+      const userId = randomUUID();
+
       const existingUserById = await this.userModel.findOne({
-        id: createUserDto.id,
+        id: userId,
       });
       if (existingUserById) {
         throw new BadRequestException('ID is already in use');
       }
-      // Create new user
-      const salt = await bcrypt.genSalt();
-      const hashedPassword = await bcrypt.hash(password, salt);
-
       // const createdUser = new this.userModel(createUserDto);
       const createdUser = new this.userModel({
-        id,
+        id: userId,
         first_name,
         last_name,
         email,
@@ -92,11 +95,14 @@ export class UserService {
           createdUser._id,
           60,
           email,
-          id,
+          userId,
           role,
         );
 
-        return { message: 'User has been created successfully' };
+        return {
+          statusCode: HttpStatus.OK,
+          message: 'User has been created successfully',
+        };
       }
     } catch (error) {
       if (error instanceof MongooseError.ValidationError) {
@@ -111,6 +117,50 @@ export class UserService {
       }
       // Log the error and throw a generic error message to the user
       this.logger.error('Unexpected error during user creation', error.stack);
+      throw error;
+    }
+  }
+
+  async resendVerifyUser(
+    email: string,
+  ): Promise<{ statusCode: number; message: string }> {
+    try {
+      const existingUserByEmail = await this.userModel
+        .findOne({
+          email,
+        })
+        .lean()
+        .exec();
+      if (existingUserByEmail) {
+        if (existingUserByEmail.email_verified) {
+          throw new BadRequestException('Email is already verified');
+        }
+
+        await this.verificationService.addVerificationToken(
+          existingUserByEmail._id,
+          60,
+          email,
+          existingUserByEmail.id,
+          existingUserByEmail.role[existingUserByEmail.role.length - 1],
+        );
+      }
+      return {
+        statusCode: HttpStatus.OK,
+        message: `Verification link has been sent to ${existingUserByEmail.email}, please check your mail`,
+      };
+    } catch (error) {
+      if (error instanceof MongooseError.ValidationError) {
+        this.logger.error(
+          `User validation failed: ${JSON.stringify(error.errors)}`,
+        );
+        // Customize error response for the user
+        const userFriendlyMessages = Object.values(error.errors).map((err) => {
+          return this.formatValidationMessage(err.path);
+        });
+        throw new BadRequestException(userFriendlyMessages.join(', '));
+      }
+      // Log the error and throw a generic error message to the user
+      this.logger.error('Unexpected error while sending email', error.stack);
       throw error;
     }
   }
