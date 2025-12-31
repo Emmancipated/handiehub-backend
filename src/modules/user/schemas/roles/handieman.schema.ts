@@ -27,6 +27,21 @@ export class HandiemanProfile {
   @Prop({ type: [String], default: [], required: true })
   productsImageUrl: string[];
 
+  @Prop({ required: true })
+  businessName: string;
+
+  @Prop()
+  responseTime: string;
+
+  @Prop()
+  isVerified: boolean;
+
+  @Prop()
+  isFeatured: boolean;
+
+  @Prop()
+  isTopSeller: boolean;
+
   // @Prop({ type: [String], default: [] })
   // salesHistory: string[]; // Example, replace with actual sales record/type
 }

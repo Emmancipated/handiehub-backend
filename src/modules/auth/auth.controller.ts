@@ -33,11 +33,19 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import {
   UpdateHandiemanDto,
   UpdateHandiemanProfileSchema,
-} from '../user/dto/update-handieman.dto';
+} from '../handieman/dto/update-handieman.dto';
+import { HandiemanService } from '../handieman/handieman.service';
+import {
+  UpdateOTPDto,
+  updateOTPSchema,
+} from '../verification/dto/update-otp.dto';
 
-@Controller('auth')
+@Controller('api/auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private handiemanService: HandiemanService,
+  ) {}
 
   // @HttpCode(HttpStatus.OK)
   // @Post('login')
@@ -72,11 +80,17 @@ export class AuthController {
     return this.authService.login(req.user);
   }
 
-  @Get('verify')
-  verifyUser(@Query('token') token: string) {
-    return this.authService.verifyAccount(token);
-  }
+  // @Get('verify')
+  // verifyUser(@Query('token') token: string) {
+  //   return this.authService.verifyAccount(token);
+  // }
 
+  @Post('verify')
+  verifyUser(
+    @Body(new ZodValidationPipe(updateOTPSchema)) updateOTPDto: UpdateOTPDto,
+  ) {
+    return this.authService.verifyAccount(updateOTPDto);
+  }
   @Get('resend-verification')
   resendverifyUser(@Query('email') email: string) {
     return this.authService.reverifyAccount(email);
@@ -88,12 +102,21 @@ export class AuthController {
     return req.user;
   }
 
+  // @HttpCode(HttpStatus.OK)
+  // @Post('handieman/update-account')
+  // async updateHandieman(
+  //   @Body(new ZodValidationPipe(UpdateHandiemanProfileSchema))
+  //   updateHandiemanDto: UpdateHandiemanDto,
+  // ) {
+  //   return this.authService.createHandiemanAccount(updateHandiemanDto);
+  // }
+
   @HttpCode(HttpStatus.OK)
   @Post('handieman/update-account')
   async updateHandieman(
     @Body(new ZodValidationPipe(UpdateHandiemanProfileSchema))
     updateHandiemanDto: UpdateHandiemanDto,
   ) {
-    return this.authService.createHandiemanAccount(updateHandiemanDto);
+    return this.handiemanService.handieHubAccountUpdate(updateHandiemanDto);
   }
 }

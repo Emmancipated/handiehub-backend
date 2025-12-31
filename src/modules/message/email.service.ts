@@ -8,10 +8,21 @@ export class EmailService {
   private mailTransport: Transporter;
 
   constructor(private configService: ConfigService) {
+    // this.mailTransport = createTransport({
+    //   host: this.configService.get('MAIL_HOST'),
+    //   port: Number(this.configService.get('MAIL_PORT')),
+    //   secure: false, // TODO: upgrade later with STARTTLS
+    //   auth: {
+    //     user: this.configService.get('MAIL_USER'),
+    //     pass: this.configService.get('MAIL_PASSWORD'),
+    //   },
+    // });
     this.mailTransport = createTransport({
       host: this.configService.get('MAIL_HOST'),
-      port: Number(this.configService.get('MAIL_PORT')),
-      secure: false, // TODO: upgrade later with STARTTLS
+      // port: Number(this.configService.get('MAIL_PORT')),
+      // secure: false, // Use true if port is 465
+      port: 465,
+      secure: true, // use SSL
       auth: {
         user: this.configService.get('MAIL_USER'),
         pass: this.configService.get('MAIL_PASSWORD'),
@@ -22,7 +33,6 @@ export class EmailService {
   async sendEmail(data: SendEmailDto): Promise<{ success: boolean } | null> {
     const { sender, recipients, subject, html, text } = data;
     // const url = `http://your-frontend-app/verify-email?token=${token}`;
-    console.log('Send mail was called');
 
     // const mailOptions: SendMailOptions = {
     //   from: sender ?? {
@@ -67,6 +77,7 @@ export class EmailService {
       await this.mailTransport.sendMail(mailOptions);
       return { success: true };
     } catch (error) {
+      console.log(error, 'This is why it did not work');
       // handle error
       return null;
     }

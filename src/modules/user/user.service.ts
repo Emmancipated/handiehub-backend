@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 // import { Model, MongooseError } from 'mongoose';
-import { Model, Error as MongooseError } from 'mongoose';
+import { Model, Error as MongooseError, Types } from 'mongoose';
 import { User } from './schemas/user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { VerificationService } from '../verification/verification.service';
@@ -18,6 +18,7 @@ import * as bcrypt from 'bcryptjs';
 import { stringify } from 'querystring';
 import { randomUUID } from 'crypto';
 import { UpdateHandiemanDto } from './dto/update-handieman.dto';
+import { UpdateOTPDto } from '../verification/dto/update-otp.dto';
 
 @Injectable()
 export class UserService {
@@ -27,7 +28,7 @@ export class UserService {
     // private verificationTokenService: VerificationService,
     private emailService: EmailService,
     private readonly verificationService: VerificationService,
-  ) {}
+  ) { }
 
   async findAll(): Promise<User[]> {
     Logger.log('This action returns all USERS');
@@ -52,52 +53,46 @@ export class UserService {
     createUserDto: CreateUserDto,
   ): Promise<User | { statusCode: number; message: string }> {
     const { first_name, last_name, email, password, role } = createUserDto;
+    const lowercaseEmail = email.toLowerCase();
     try {
-      const existingUserByEmail = await this.userModel
-        .findOne({
-          email: createUserDto.email,
-        })
-        .lean()
-        .exec();
-      if (existingUserByEmail) {
-        if (!existingUserByEmail.email_verified) {
-          throw new BadRequestException(
-            'Email is already in use, please verify account',
-          );
-        }
-        throw new BadRequestException('Email is already in use');
-      }
-
+      // const existingUserByEmail = await this.userModel
+      //   .findOne({
+      //     email: lowercaseEmail,
+      //   })
+      //   .lean()
+      //   .exec();
+      // Removed race-condition prone check. Database unique index will handle this.
       // Create new user
       const salt = await bcrypt.genSalt();
       const hashedPassword = await bcrypt.hash(password, salt);
       const userId = randomUUID();
 
-      const existingUserById = await this.userModel.findOne({
-        id: userId,
-      });
-      if (existingUserById) {
-        throw new BadRequestException('ID is already in use');
-      }
+      // const existingUserById = await this.userModel.findOne({
+      //   id: userId,
+      // });
+      // if (existingUserById) {
+      //   throw new BadRequestException('ID is already in use');
+      // }
       // const createdUser = new this.userModel(createUserDto);
       const createdUser = new this.userModel({
         id: userId,
         first_name,
         last_name,
-        email,
+        email: lowercaseEmail,
         password: hashedPassword,
         registrationDate: new Date(),
         role: [role],
       });
       await createdUser.save();
       if (createdUser) {
-        await this.verificationService.addVerificationToken(
-          createdUser._id,
-          60,
-          email,
-          userId,
-          role,
-        );
+        // await this.verificationService.addVerificationToken(
+        //   createdUser._id,
+        //   60,
+        //   lowercaseEmail,
+        //   userId,
+        //   role,
+        // );
+        await this.verificationService.sendOtp(createdUser);
 
         return {
           statusCode: HttpStatus.OK,
@@ -105,6 +100,17 @@ export class UserService {
         };
       }
     } catch (error) {
+      if (error.code === 11000) {
+        // Check if it's an email duplicate
+        if (error.keyPattern && error.keyPattern.email) {
+          // We can try to find the user to check if verified (optional, but risky for race condition again)
+          // Ideally, just tell user email is taken.
+          // If we want to support the "resend OTP if unverified" flow, we need a better approach or accept the race condition for that specific edge case.
+          // For now, let's just throw generic error or specific if we can identify.
+          throw new BadRequestException('Email is already in use');
+        }
+        throw new BadRequestException('Duplicate entry');
+      }
       if (error instanceof MongooseError.ValidationError) {
         this.logger.error(
           `User validation failed: ${JSON.stringify(error.errors)}`,
@@ -121,32 +127,93 @@ export class UserService {
     }
   }
 
+  // async createUser(
+  //   createUserDto: CreateUserDto,
+  // ): Promise<{ statusCode: number; message: string }> {
+  //   const { first_name, last_name, email, password, role } = createUserDto;
+  //   const lowercaseEmail = email.toLowerCase();
+
+  //   try {
+  //     // Check if user already exists by email
+  //     const existingUser = await this.userModel
+  //       .findOne({ email: lowercaseEmail })
+  //       .exec();
+
+  //     if (existingUser) {
+  //       if (!existingUser.email_verified) {
+  //         // Send OTP only once, avoid repeated sends on every call
+  //         const tokenSent =
+  //           await this.verificationService.sendOtp(existingUser);
+  //         if (tokenSent) {
+  //           this.logger.log(`OTP sent to unverified user: ${lowercaseEmail}`);
+  //         }
+
+  //         throw new BadRequestException(
+  //           'Email is already in use, please verify account',
+  //         );
+  //       }
+
+  //       // User exists and is verified
+  //       throw new BadRequestException('Email is already in use');
+  //     }
+
+  //     // Proceed to create new user
+  //     const salt = await bcrypt.genSalt();
+  //     const hashedPassword = await bcrypt.hash(password, salt);
+  //     const userId = randomUUID();
+
+  //     const newUser = new this.userModel({
+  //       id: userId,
+  //       first_name,
+  //       last_name,
+  //       email: lowercaseEmail,
+  //       password: hashedPassword,
+  //       registrationDate: new Date(),
+  //       role: [role],
+  //     });
+
+  //     await newUser.save();
+
+  //     await this.verificationService.sendOtp(newUser);
+
+  //     return {
+  //       statusCode: HttpStatus.OK,
+  //       message: 'User has been created successfully',
+  //     };
+  //   } catch (error) {
+  //     if (error instanceof MongooseError.ValidationError) {
+  //       this.logger.error(
+  //         `User validation failed: ${JSON.stringify(error.errors)}`,
+  //       );
+
+  //       const messages = Object.values(error.errors).map((err) =>
+  //         this.formatValidationMessage(err.path),
+  //       );
+
+  //       throw new BadRequestException(messages.join(', '));
+  //     }
+
+  //     this.logger.error('Unexpected error during user creation', error.stack);
+  //     throw error;
+  //   }
+  // }
+
   async resendVerifyUser(
     email: string,
   ): Promise<{ statusCode: number; message: string }> {
     try {
       const existingUserByEmail = await this.userModel
-        .findOne({
-          email,
-        })
-        .lean()
+        .findOne({ email: email.toLowerCase() })
         .exec();
       if (existingUserByEmail) {
         if (existingUserByEmail.email_verified) {
           throw new BadRequestException('Email is already verified');
         }
-
-        await this.verificationService.addVerificationToken(
-          existingUserByEmail._id,
-          60,
-          email,
-          existingUserByEmail.id,
-          existingUserByEmail.role[existingUserByEmail.role.length - 1],
-        );
+        await this.verificationService.sendOtp(existingUserByEmail);
       }
       return {
         statusCode: HttpStatus.OK,
-        message: `Verification link has been sent to ${existingUserByEmail.email}, please check your mail`,
+        message: `Otp has been sent to ${existingUserByEmail.email}, please check your mail`,
       };
     } catch (error) {
       if (error instanceof MongooseError.ValidationError) {
@@ -165,8 +232,10 @@ export class UserService {
     }
   }
 
-  async verifyUser(verificationToken: string) {
-    return await this.verificationService.verifyToken(verificationToken);
+  async verifyUser(updateOTPDto: UpdateOTPDto) {
+    const { email, otp } = updateOTPDto;
+    // return await this.verificationService.verifyToken(verificationToken);
+    return await this.verificationService.verifyOtp(email.toLowerCase(), otp);
   }
 
   async generateEmailVerification(userId: number) {
@@ -260,5 +329,30 @@ export class UserService {
       this.logger.error('Unexpected error during user creation', error.stack);
       throw error;
     }
+  }
+
+  async upDateNow() {
+    const objectId = new Types.ObjectId('674bf687c1b5e11362fc421e'); // Ensure valid ObjectId
+    const userd = await this.userModel.findById(objectId);
+
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(
+        objectId,
+        {
+          $set: {
+            handiemanProfile: {
+              businessName: 'Emmanuel Handieman',
+              dp_url:
+                'https://images.unsplash.com/photo-1554151228-14d9def656e4?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8ZmFjZXxlbnwwfHwwfHx8MA%3D%3D',
+              // dp_url:
+              //   'https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZnVybml0dXJlfGVufDB8fDB8fHww',
+            },
+          },
+        },
+        { new: true, upsert: true }, // Creates `handiemanProfile` if missing
+      )
+      .exec();
+
+    return updatedUser;
   }
 }

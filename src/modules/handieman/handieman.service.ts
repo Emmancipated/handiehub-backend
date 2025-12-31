@@ -1,0 +1,90 @@
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { CreateHandiemanDto } from './dto/create-handieman.dto';
+import { UpdateHandiemanDto } from './dto/update-handieman.dto';
+import { InjectModel } from '@nestjs/mongoose';
+import { User } from '../user/schemas/user.schema';
+import { Model } from 'mongoose';
+import { UserService } from '../user/user.service';
+
+@Injectable()
+export class HandiemanService {
+  private readonly logger = new Logger(UserService.name);
+  constructor(@InjectModel(User.name) private userModel: Model<User>) {}
+  create(createHandiemanDto: CreateHandiemanDto) {
+    return 'This action adds a new handieman';
+  }
+
+  findAll() {
+    return `This action returns all handieman`;
+  }
+
+  findOne(id: number) {
+    return `This action returns a #${id} handieman`;
+  }
+
+  update(id: number, updateHandiemanDto: UpdateHandiemanDto) {
+    return `This action updates a #${id} handieman`;
+  }
+
+  remove(id: number) {
+    return `This action removes a #${id} handieman`;
+  }
+
+  // async handieHubAccountUpdate(
+  //   updateHandiemanDto: UpdateHandiemanDto,
+  // ): Promise<{ statusCode: HttpStatus; message: string }> {
+  //   const { email } = updateHandiemanDto;
+  //   try {
+  //     await this.userModel.findOneAndUpdate(
+  //       { email }, // Query object to find the document
+  //       { handiemanProfile: updateHandiemanDto }, // Update object
+  //       { new: true },
+  //     );
+  //     // return { message: 'Seller has been updated successfully' };
+  //     return {
+  //       statusCode: HttpStatus.OK,
+  //       message: 'Seller has been updated successfully.',
+  //     };
+  //   } catch (error) {
+  //     // Log the error and throw a generic error message to the user
+  //     this.logger.error('Unexpected error during user creation', error.stack);
+  //     throw error;
+  //   }
+  // }
+
+  async handieHubAccountUpdate(
+    updateHandiemanDto: UpdateHandiemanDto,
+  ): Promise<{ statusCode: HttpStatus; message: string }> {
+    const { email, productsImageUrl, ...rest } = updateHandiemanDto;
+
+    try {
+      // Build update object
+      const updateQuery: any = {
+        $set: {
+          ...(Object.keys(rest).length ? { handiemanProfile: rest } : {}),
+        },
+      };
+
+      // If productsImageUrl exists and is an array, push to existing array
+      if (productsImageUrl && Array.isArray(productsImageUrl)) {
+        updateQuery.$push = {
+          'handiemanProfile.productsImageUrl': {
+            $each: productsImageUrl,
+          },
+        };
+      }
+
+      await this.userModel.findOneAndUpdate({ email }, updateQuery, {
+        new: true,
+      });
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Seller has been updated successfully.',
+      };
+    } catch (error) {
+      this.logger.error('Unexpected error during user update', error.stack);
+      throw error;
+    }
+  }
+}

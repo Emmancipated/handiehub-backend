@@ -19,7 +19,7 @@ export class User {
   @Prop({ required: true })
   last_name: string;
 
-  @Prop({ required: true })
+  @Prop({ required: true, unique: true })
   email: string;
 
   @Prop({ required: true })
@@ -36,6 +36,12 @@ export class User {
 
   @Prop({ default: null })
   verificationToken: string;
+
+  @Prop({ default: null })
+  otp: string;
+
+  @Prop({ default: null })
+  otpExpiresAt: Date;
 
   @Prop({ default: null })
   expiresAt: Date;

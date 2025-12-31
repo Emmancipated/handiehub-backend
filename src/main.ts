@@ -1,9 +1,32 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import * as express from 'express';
+import * as bodyParser from 'body-parser';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.enableCors();
+
+  // Security
+  app.enableCors({
+    origin: '*', // TODO: Configure this for production
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+  });
+  app.use(helmet());
+
+  // Capture raw body for the webhook
+  app.use(
+    '/api/webhook/paystack',
+    express.json({
+      verify: (req: any, res, buf: Buffer) => {
+        req.rawBody = buf.toString(); // Store raw body on request object
+      },
+    }),
+  );
+  // ✅ Global JSON parser for normal endpoints
+  app.use(bodyParser.json());
   const port = process.env.PORT || 3000;
   await app.listen(port);
 }

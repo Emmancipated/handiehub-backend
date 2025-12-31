@@ -1,16 +1,20 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, HttpStatus, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { UserService } from 'src/modules/user/user.service';
+import { UserService } from '../user/user.service';
 import { CreateUserDto } from '../user/dto/create-user.dto';
 import * as bcrypt from 'bcryptjs';
 import { UpdateHandiemanDto } from '../user/dto/update-handieman.dto';
+import { VerificationService } from '../verification/verification.service';
+import { UpdateOTPDto } from '../verification/dto/update-otp.dto';
+// import {}
 
 @Injectable()
 export class AuthService {
   constructor(
     private usersService: UserService,
     private jwtService: JwtService,
-  ) {}
+    private verificationService: VerificationService,
+  ) { }
 
   async validateUser(username: string, pass: string): Promise<any> {
     const user = await this.usersService.findOne(username);
@@ -20,6 +24,7 @@ export class AuthService {
       throw new BadRequestException('Incorrect email or password');
     }
     if (!user.email_verified) {
+      this.verificationService.sendOtp(username.toLowerCase());
       throw new BadRequestException('Please verify account to continue');
     }
 
@@ -33,7 +38,9 @@ export class AuthService {
   async login(user: any) {
     const payload = { username: user.email, sub: user.id, role: user.role };
     return {
+      statusCode: HttpStatus.OK,
       access_token: this.jwtService.sign(payload),
+      message: 'Logged in successfully.',
     };
   }
 
@@ -42,22 +49,13 @@ export class AuthService {
     return user;
   }
 
-  async verifyAccount(verificationToken: string): Promise<any> {
-    const verification = await this.usersService.verifyUser(verificationToken);
+  async verifyAccount(updateOTPDto: UpdateOTPDto): Promise<any> {
+    const verification = await this.usersService.verifyUser(updateOTPDto);
     return verification;
   }
 
-  async reverifyAccount(verificationToken: string): Promise<any> {
-    const verification =
-      await this.usersService.resendVerifyUser(verificationToken);
+  async reverifyAccount(email: string): Promise<any> {
+    const verification = await this.usersService.resendVerifyUser(email);
     return verification;
-  }
-
-  async createHandiemanAccount(
-    handiemanAcct: UpdateHandiemanDto,
-  ): Promise<any> {
-    const handiemanItem =
-      await this.usersService.handieHubAccountUpdate(handiemanAcct);
-    return handiemanItem;
   }
 }

@@ -256,6 +256,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  HttpStatus,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -263,7 +264,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { User } from '../user/schemas/user.schema';
 import { EmailService } from '../message/email.service';
 import { JwtService } from '@nestjs/jwt';
-import { jwtConstants } from '../auth/constants';
+import { ConfigService } from '@nestjs/config';
+import { generateOtp } from './utils/otp.utils';
 
 @Injectable()
 export class VerificationService {
@@ -271,7 +273,8 @@ export class VerificationService {
     @InjectModel('User') private readonly userModel: Model<User>,
     private emailService: EmailService,
     private jwtService: JwtService,
-  ) {}
+    private configService: ConfigService,
+  ) { }
 
   async addVerificationToken(
     userId: Types.ObjectId,
@@ -289,7 +292,7 @@ export class VerificationService {
     // { username: user.email, sub: user.id }
     // Generate a JWT token with userId and expiration
     const verificationToken = this.jwtService.sign(payload, {
-      secret: jwtConstants.secret,
+      secret: this.configService.get<string>('JWT_SECRET'),
       expiresIn: `3600`,
     });
 
@@ -345,5 +348,90 @@ export class VerificationService {
     await user.save();
 
     return { message: 'Account verified successfully.' };
+  }
+
+  // async sendOtp(userId: Types.ObjectId) {
+  //   const user = await this.userModel.findById(userId);
+  //   if (!user) throw new NotFoundException('User not found');
+
+  //   const otp = generateOtp(6);
+  //   const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  //   user.otp = otp;
+  //   user.otpExpiresAt = otpExpiresAt;
+  //   await user.save();
+
+  //   const mailAddress = {
+  //     name: user.first_name,
+  //     address: user.email,
+  //   };
+
+  //   const message = `Your OTP for MyApp is: ${otp}`;
+
+  //   await this.emailService.sendEmail({
+  //     recipients: [mailAddress],
+  //     subject: 'Your OTP Code',
+  //     html: `<p>Hi ${user.first_name},</p><p>Your OTP is: <strong style="font-size:20px;">${otp}</strong></p><p>It will expire in 10 minutes.</p>`,
+  //     text: message,
+  //   });
+
+  //   return { message: 'OTP sent successfully' };
+  // }
+
+  async sendOtp(user: any) {
+    // const user = await this.userModel.findOne({ email });
+    // if (!user) throw new NotFoundException('User not found');
+
+    const otp = generateOtp(6);
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    try {
+      user.otp = otp;
+      user.otpExpiresAt = otpExpiresAt;
+      await user.save();
+      // console.log(user, user.save(), 'sends otp');
+      const testingSentMail = await this.emailService.sendEmail({
+        recipients: [{ name: user.first_name, address: user?.email }],
+        subject: 'Your OTP Code',
+        html: `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
+        text: `Your OTP is ${otp}`,
+      });
+      // console.log(testingSentMail, 'Testing from verifcation sendOtp');
+      return { message: 'OTP sent to your email.' };
+    } catch (error) {
+      return { message: 'Error occurred while sending mail' };
+    }
+  }
+
+  async verifyOtp(email: string, otp: string) {
+    try {
+      const user = await this.userModel.findOne({ email });
+      if (!user) throw new NotFoundException('User not found');
+      // console.log(user, 'from verifyOTP');
+      if (!user.otp || !user.otpExpiresAt) {
+        throw new BadRequestException('No OTP set for this user');
+      }
+
+      if (user.otp !== otp) {
+        throw new BadRequestException('Invalid OTP');
+      }
+
+      if (new Date() > user.otpExpiresAt) {
+        throw new BadRequestException('OTP has expired');
+      }
+
+      // Clear OTP fields and mark verified
+      user.otp = null;
+      user.otpExpiresAt = null;
+      user.email_verified = true;
+      user.accountStatus = 'active';
+      await user.save();
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'OTP verified successfully. Account activated.',
+      };
+    } catch (error) {
+      console.error(error);
+    }
   }
 }

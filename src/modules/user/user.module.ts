@@ -1,7 +1,7 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { UserService } from './user.service';
 import { MongooseModule } from '@nestjs/mongoose';
-import { UserController } from './user.controller.';
+import { UserController } from './user.controller';
 import { User, UserSchema } from './schemas/user.schema';
 import { VerificationService } from '../verification/verification.service';
 import { EmailService } from '../message/email.service';
@@ -23,6 +23,12 @@ import { jwtConstants } from '../auth/constants';
   ],
   controllers: [UserController],
   providers: [UserService, VerificationService, EmailService],
-  exports: [UserService, VerificationService],
+  exports: [
+    UserService,
+    VerificationService,
+    MongooseModule,
+    JwtModule,
+    EmailService,
+  ],
 })
 export class UserModule {}

@@ -14,6 +14,11 @@ import { UserModule } from './modules/user/user.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { VerificationModule } from './modules/verification/verification.module';
 import { MessageModule } from './modules/message/message.module';
+import { OrdersModule } from './modules/orders/orders.module';
+import { ProductModule } from './modules/product/product.module';
+import { SkuModule } from './modules/skucounter/sku.module';
+import { TransactionModule } from './modules/transaction/transaction.module';
+import { PaystackModule } from './modules/paystack/paystack.module';
 // mongodb://127.0.0.1:27017/
 @Module({
   imports: [
@@ -29,15 +34,22 @@ import { MessageModule } from './modules/message/message.module';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [config],
+      envFilePath: '.env',
     }),
     // DogModule,
     UserModule,
     AuthModule,
     // VerificationModule,
     MessageModule,
+    OrdersModule,
+    ProductModule,
+    SkuModule,
+    TransactionModule,
+    PaystackModule,
     // DatabaseModule,
   ],
   controllers: [AppController, AdminController],
   providers: [AppService],
 })
 export class AppModule {}
+// envFilePath: ['.env.dev', '.env']
