@@ -8,8 +8,8 @@ import { UserService } from '../user/user.service';
 
 @Injectable()
 export class HandiemanService {
-  private readonly logger = new Logger(UserService.name);
-  constructor(@InjectModel(User.name) private userModel: Model<User>) {}
+  private readonly logger = new Logger(HandiemanService.name);
+  constructor(@InjectModel(User.name) private userModel: Model<User>) { }
   create(createHandiemanDto: CreateHandiemanDto) {
     return 'This action adds a new handieman';
   }
@@ -58,12 +58,27 @@ export class HandiemanService {
     const { email, productsImageUrl, ...rest } = updateHandiemanDto;
 
     try {
-      // Build update object
+      // 1. Ensure the handiemanProfile object exists and is not null
+      // MongoDB cannot create subfields (e.g., handiemanProfile.address) if the parent is null.
+      await this.userModel.updateOne(
+        { email, handiemanProfile: null },
+        { $set: { handiemanProfile: {} } },
+      );
+
+      // 2. Build update object using dot notation to avoid conflicts
       const updateQuery: any = {
-        $set: {
-          ...(Object.keys(rest).length ? { handiemanProfile: rest } : {}),
-        },
+        $addToSet: { role: 'handieman' }, // Ensure role exists or add it
       };
+
+      // Build the $set object with dot notation
+      const setFields: any = {};
+      Object.keys(rest).forEach((key) => {
+        setFields[`handiemanProfile.${key}`] = rest[key];
+      });
+
+      if (Object.keys(setFields).length > 0) {
+        updateQuery.$set = setFields;
+      }
 
       // If productsImageUrl exists and is an array, push to existing array
       if (productsImageUrl && Array.isArray(productsImageUrl)) {

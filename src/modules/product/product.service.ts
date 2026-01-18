@@ -156,9 +156,6 @@ export class ProductService {
       );
     }
 
-    console.log('Product handieman:', product.handieman);
-    console.log('Product handieman type:', typeof product.handieman);
-
     // Format seller details
     const handiemanDetails = {
       firstName: product.handieman?.first_name || '',
@@ -169,8 +166,6 @@ export class ProductService {
       responseTime: product.handieman?.handiemanProfile?.responseTime || '2 hours',
     };
 
-    console.log('Formatted handiemanDetails:', handiemanDetails);
-
     const response = {
       statusCode: HttpStatus.OK,
       data: {
@@ -178,8 +173,6 @@ export class ProductService {
         handiemanDetails,
       },
     };
-
-    console.log('Final response structure:', JSON.stringify(response, null, 2));
 
     return response;
   }

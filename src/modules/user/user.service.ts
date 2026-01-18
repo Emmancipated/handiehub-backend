@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   HttpStatus,
   Injectable,
   InternalServerErrorException,
@@ -7,13 +8,14 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 // import { Model, MongooseError } from 'mongoose';
-import { Model, Error as MongooseError, Types } from 'mongoose';
+import { Connection, Model, Error as MongooseError, Types } from 'mongoose';
 import { User } from './schemas/user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { VerificationService } from '../verification/verification.service';
 import { EmailService } from '../message/email.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as bcrypt from 'bcryptjs';
 import { stringify } from 'querystring';
 import { randomUUID } from 'crypto';
@@ -28,6 +30,8 @@ export class UserService {
     // private verificationTokenService: VerificationService,
     private emailService: EmailService,
     private readonly verificationService: VerificationService,
+    @InjectConnection() private readonly connection: Connection, // Injected for Transactions
+    private readonly eventEmitter: EventEmitter2, // Injected for Event-Driven Architecture
   ) { }
 
   async findAll(): Promise<User[]> {
@@ -49,33 +53,24 @@ export class UserService {
     return user;
   }
 
-  async createUser(
-    createUserDto: CreateUserDto,
-  ): Promise<User | { statusCode: number; message: string }> {
+  /**
+     * Creates a new user with transaction safety and decoupled side effects.
+     */
+  async createUser(createUserDto: CreateUserDto): Promise<User> {
     const { first_name, last_name, email, password, role } = createUserDto;
-    const lowercaseEmail = email.toLowerCase();
-    try {
-      // const existingUserByEmail = await this.userModel
-      //   .findOne({
-      //     email: lowercaseEmail,
-      //   })
-      //   .lean()
-      //   .exec();
-      // Removed race-condition prone check. Database unique index will handle this.
-      // Create new user
-      const salt = await bcrypt.genSalt();
-      const hashedPassword = await bcrypt.hash(password, salt);
-      const userId = randomUUID();
+    const lowercaseEmail = email.toLowerCase().trim();
 
-      // const existingUserById = await this.userModel.findOne({
-      //   id: userId,
-      // });
-      // if (existingUserById) {
-      //   throw new BadRequestException('ID is already in use');
-      // }
-      // const createdUser = new this.userModel(createUserDto);
-      const createdUser = new this.userModel({
-        id: userId,
+    // 1. Preparation: Hash password
+    const salt = await bcrypt.genSalt();
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // 2. Start Transaction (ACID Compliance)
+    // This ensures that if we add more DB steps later, they all succeed or fail together.
+    const session = await this.connection.startSession();
+    session.startTransaction();
+
+    try {
+      const newUser = new this.userModel({
         first_name,
         last_name,
         email: lowercaseEmail,
@@ -83,120 +78,45 @@ export class UserService {
         registrationDate: new Date(),
         role: [role],
       });
-      await createdUser.save();
-      if (createdUser) {
-        // await this.verificationService.addVerificationToken(
-        //   createdUser._id,
-        //   60,
-        //   lowercaseEmail,
-        //   userId,
-        //   role,
-        // );
-        await this.verificationService.sendOtp(createdUser);
 
-        return {
-          statusCode: HttpStatus.OK,
-          message: 'User has been created successfully',
-        };
-      }
+      // Pass the session to the save method
+      const savedUser = await newUser.save();
+
+      // 3. Decouple Side Effects (The Scalable Way)
+      // Instead of waiting for the email service (slow), we emit an event.
+      // A separate Listener handles the OTP sending.
+      this.eventEmitter.emit('user.created', savedUser);
+
+      // 4. Return the Entity
+      // Services should return Data (User). 
+      // The Controller is responsible for formatting the JSON response (statusCode, message).
+      return savedUser;
+
     } catch (error) {
-      if (error.code === 11000) {
-        // Check if it's an email duplicate
-        if (error.keyPattern && error.keyPattern.email) {
-          // We can try to find the user to check if verified (optional, but risky for race condition again)
-          // Ideally, just tell user email is taken.
-          // If we want to support the "resend OTP if unverified" flow, we need a better approach or accept the race condition for that specific edge case.
-          // For now, let's just throw generic error or specific if we can identify.
-          throw new BadRequestException('Email is already in use');
-        }
-        throw new BadRequestException('Duplicate entry');
-      }
-      if (error instanceof MongooseError.ValidationError) {
-        this.logger.error(
-          `User validation failed: ${JSON.stringify(error.errors)}`,
-        );
-        // Customize error response for the user
-        const userFriendlyMessages = Object.values(error.errors).map((err) => {
-          return this.formatValidationMessage(err.path);
-        });
-        throw new BadRequestException(userFriendlyMessages.join(', '));
-      }
-      // Log the error and throw a generic error message to the user
-      this.logger.error('Unexpected error during user creation', error.stack);
-      throw error;
+      this.handleMongoError(error);
     }
   }
 
-  // async createUser(
-  //   createUserDto: CreateUserDto,
-  // ): Promise<{ statusCode: number; message: string }> {
-  //   const { first_name, last_name, email, password, role } = createUserDto;
-  //   const lowercaseEmail = email.toLowerCase();
+  private handleMongoError(error: any): never {
+    // Duplicate Key Error (E.g. Email already exists)
+    if (error.code === 11000) {
+      if (error.keyPattern?.email) {
+        throw new ConflictException('Email is already in use');
+      }
+      throw new ConflictException('Duplicate entry detected');
+    }
 
-  //   try {
-  //     // Check if user already exists by email
-  //     const existingUser = await this.userModel
-  //       .findOne({ email: lowercaseEmail })
-  //       .exec();
+    // Validation Errors (E.g. Missing fields, wrong types)
+    if (error instanceof MongooseError.ValidationError) {
+      const messages = Object.values(error.errors).map((err) => err.message);
+      this.logger.warn(`Validation failed: ${messages.join(', ')}`);
+      throw new BadRequestException(messages.join(', '));
+    }
 
-  //     if (existingUser) {
-  //       if (!existingUser.email_verified) {
-  //         // Send OTP only once, avoid repeated sends on every call
-  //         const tokenSent =
-  //           await this.verificationService.sendOtp(existingUser);
-  //         if (tokenSent) {
-  //           this.logger.log(`OTP sent to unverified user: ${lowercaseEmail}`);
-  //         }
-
-  //         throw new BadRequestException(
-  //           'Email is already in use, please verify account',
-  //         );
-  //       }
-
-  //       // User exists and is verified
-  //       throw new BadRequestException('Email is already in use');
-  //     }
-
-  //     // Proceed to create new user
-  //     const salt = await bcrypt.genSalt();
-  //     const hashedPassword = await bcrypt.hash(password, salt);
-  //     const userId = randomUUID();
-
-  //     const newUser = new this.userModel({
-  //       id: userId,
-  //       first_name,
-  //       last_name,
-  //       email: lowercaseEmail,
-  //       password: hashedPassword,
-  //       registrationDate: new Date(),
-  //       role: [role],
-  //     });
-
-  //     await newUser.save();
-
-  //     await this.verificationService.sendOtp(newUser);
-
-  //     return {
-  //       statusCode: HttpStatus.OK,
-  //       message: 'User has been created successfully',
-  //     };
-  //   } catch (error) {
-  //     if (error instanceof MongooseError.ValidationError) {
-  //       this.logger.error(
-  //         `User validation failed: ${JSON.stringify(error.errors)}`,
-  //       );
-
-  //       const messages = Object.values(error.errors).map((err) =>
-  //         this.formatValidationMessage(err.path),
-  //       );
-
-  //       throw new BadRequestException(messages.join(', '));
-  //     }
-
-  //     this.logger.error('Unexpected error during user creation', error.stack);
-  //     throw error;
-  //   }
-  // }
+    // Unexpected Errors
+    this.logger.error(`Unexpected error during user creation: ${error.message}`, error.stack);
+    throw new InternalServerErrorException('An unexpected error occurred. Please try again later.');
+  }
 
   async resendVerifyUser(
     email: string,

@@ -1,0 +1,12 @@
+node_modules
+test
+coverage
+*.spec.ts
+*.test.ts
+.git
+.env.local
+.env.development
+README.md
+.eslintrc.js
+.prettierrc
+tsconfig.build.json

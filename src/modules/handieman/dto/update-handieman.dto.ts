@@ -14,7 +14,7 @@ const ProfessionSchema = z.object({
 // Zod schema for HandiemanProfile
 const UpdateHandiemanProfileSchema = z.object({
   email: z.string().email({ message: 'Invalid email address' }),
-  dp_url: z.string().url('Invalid URL for profile image'),
+  dp_url: z.string().min(5, "Invalid image path"),
   country: z.string().min(2, 'country must be more than two characters'),
   address: z.string().min(2, 'address must be more than two characters'),
   state: z.string().min(2, 'state must be more than two characters'),
@@ -23,7 +23,7 @@ const UpdateHandiemanProfileSchema = z.object({
     .array(ProfessionSchema)
     .nonempty('At least one profession is required'),
   productsImageUrl: z
-    .array(z.string().url('Invalid URL in productsImageUrl'))
+    .array(z.string().min(5, "Invalid image path"))
     .nonempty(),
   // salesHistory: z.array(z.string().nonempty("Sales history item cannot be empty")).optional(),
 });

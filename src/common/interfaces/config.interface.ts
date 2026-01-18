@@ -14,4 +14,9 @@ export interface ConfigProps {
   mongodb: {
     database: MongodbConfigProps;
   };
+  supabase: {
+    url: string;
+    serviceRoleKey: string;
+    bucket: string;
+  };
 }

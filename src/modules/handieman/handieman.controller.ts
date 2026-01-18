@@ -11,9 +11,9 @@ import { HandiemanService } from './handieman.service';
 import { CreateHandiemanDto } from './dto/create-handieman.dto';
 import { UpdateHandiemanDto } from './dto/update-handieman.dto';
 
-@Controller('api/handieman')
+@Controller('handieman')
 export class HandiemanController {
-  constructor(private readonly handiemanService: HandiemanService) {}
+  constructor(private readonly handiemanService: HandiemanService) { }
 
   @Post()
   create(@Body() createHandiemanDto: CreateHandiemanDto) {

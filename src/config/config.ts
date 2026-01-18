@@ -15,4 +15,9 @@ export const config = (): ConfigProps => ({
       databaseName: process.env.DB_NAME || 'handiehubdb',
     },
   },
+  supabase: {
+    url: process.env.SUPABASE_URL,
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    bucket: process.env.SUPABASE_BUCKET || 'handiehub-storage',
+  },
 });

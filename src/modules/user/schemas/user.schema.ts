@@ -5,12 +5,18 @@ import {
   HandiemanProfile,
   HandiemanProfileSchema,
 } from './roles/handieman.schema';
+import { randomUUID } from 'crypto';
 
 export type UserDocument = HydratedDocument<User>;
 
 @Schema()
 export class User {
-  @Prop({ required: true, unique: true })
+  @Prop({
+    type: String,
+    default: () => randomUUID(),
+    unique: true,
+    index: true
+  })
   id: string;
 
   @Prop({ required: true })

@@ -12,9 +12,9 @@ import { CreatePaystackDto } from './dto/create-paystack.dto';
 import { UpdatePaystackDto } from './dto/update-paystack.dto';
 
 // @Controller('paystack')
-@Controller('api/webhook')
+@Controller('webhook')
 export class PaystackController {
-  constructor(private readonly paystackService: PaystackService) {}
+  constructor(private readonly paystackService: PaystackService) { }
 
   @Post('paystack')
   async handleWebhook(

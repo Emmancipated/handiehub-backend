@@ -20,6 +20,7 @@ const UpdateHandiemanProfileSchema = z.object({
   productsImageUrl: z
     .array(z.string().url('Invalid URL in productsImageUrl'))
     .nonempty(),
+  businessName: z.string().min(2, 'businessName must be more than two characters'),
   // salesHistory: z.array(z.string().nonempty("Sales history item cannot be empty")).optional(),
 });
 

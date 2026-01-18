@@ -6,6 +6,7 @@ import * as bcrypt from 'bcryptjs';
 import { UpdateHandiemanDto } from '../user/dto/update-handieman.dto';
 import { VerificationService } from '../verification/verification.service';
 import { UpdateOTPDto } from '../verification/dto/update-otp.dto';
+import { log } from 'console';
 // import {}
 
 @Injectable()
@@ -36,7 +37,8 @@ export class AuthService {
   }
 
   async login(user: any) {
-    const payload = { username: user.email, sub: user.id, role: user.role };
+    console.log(user);
+    const payload = { username: user.email, sub: user.id, role: user.role, first_name: user.first_name, last_name: user.last_name, userId: user._id.toString(), bizName: user.businessName };
     return {
       statusCode: HttpStatus.OK,
       access_token: this.jwtService.sign(payload),

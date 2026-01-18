@@ -21,7 +21,7 @@ import {
   updateProductSchema,
 } from './dto/update-product.dto';
 
-@Controller('api/products')
+@Controller('products')
 export class ProductController {
   constructor(private readonly productService: ProductService) { }
 

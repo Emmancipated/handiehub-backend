@@ -12,9 +12,9 @@ import { OrdersService } from './orders.service';
 import { createOrderchema, CreateOrderDto } from './dto/create-order.dto';
 import { ZodValidationPipe } from 'src/validators/schema-validator-pipe';
 
-@Controller('/api/orders')
+@Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(private readonly ordersService: OrdersService) { }
 
   @Post('/create')
   create(
@@ -25,13 +25,13 @@ export class OrdersController {
   }
 
   @Get()
-  findAll() {
-    return this.ordersService.findAll();
+  findAll(@Query() filters: { userId?: string; handiemanId?: string; status?: string }) {
+    return this.ordersService.findAll(filters);
   }
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.ordersService.findOne(+id);
+    return this.ordersService.findOne(id);
   }
   @Get('/overview/:id')
   handieManOverview(
@@ -41,13 +41,13 @@ export class OrdersController {
     return this.ordersService.getHandiemanOverview(sellerId, filter);
   }
 
-  // @Patch(':id')
-  // update(@Param('id') id: string, @Body() updateOrderDto: UpdateOrderDto) {
-  //   return this.ordersService.update(+id, updateOrderDto);
-  // }
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() updateData: { status?: string; deliveryDate?: Date }) {
+    return this.ordersService.update(id, updateData);
+  }
 
   @Delete(':id')
   remove(@Param('id') id: string) {
-    return this.ordersService.remove(+id);
+    return this.ordersService.remove(id);
   }
 }

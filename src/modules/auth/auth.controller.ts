@@ -40,12 +40,12 @@ import {
   updateOTPSchema,
 } from '../verification/dto/update-otp.dto';
 
-@Controller('api/auth')
+@Controller('auth')
 export class AuthController {
   constructor(
     private authService: AuthService,
     private handiemanService: HandiemanService,
-  ) {}
+  ) { }
 
   // @HttpCode(HttpStatus.OK)
   // @Post('login')
@@ -70,7 +70,8 @@ export class AuthController {
   async signUp(
     @Body(new ZodValidationPipe(createUserSchema)) createUserDto: CreateUserDto,
   ) {
-    return this.authService.signUp(createUserDto);
+    await this.authService.signUp(createUserDto);
+    return { statusCode: 201, message: 'User created successfully' };
   }
 
   @HttpCode(HttpStatus.OK)

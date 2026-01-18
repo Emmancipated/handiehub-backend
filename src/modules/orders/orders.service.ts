@@ -21,7 +21,7 @@ export class OrdersService {
     // private verificationTokenService: VerificationService,
     // private emailService: EmailService,
     // private readonly verificationService: VerificationService,
-  ) {}
+  ) { }
   async create(
     createOrderDto: CreateOrderDto,
   ): Promise<{ statusCode: number; message: string }> {
@@ -84,20 +84,122 @@ export class OrdersService {
     }
   }
 
-  findAll() {
-    return `This action returns all orders`;
+  async findAll(filters?: {
+    userId?: string;
+    handiemanId?: string;
+    status?: string;
+  }): Promise<Order[]> {
+    try {
+      const query: any = {};
+
+      if (filters?.userId) {
+        query.user = filters.userId;
+      }
+
+      if (filters?.handiemanId) {
+        query.handieman = filters.handiemanId;
+      }
+
+      if (filters?.status) {
+        query.status = filters.status;
+      }
+
+      return await this.orderModel
+        .find(query)
+        .populate('user', 'first_name last_name email')
+        .populate('handieman', 'first_name last_name email handiemanProfile')
+        .sort({ createdAt: -1 })
+        .exec();
+    } catch (error) {
+      this.logger.error('Error fetching orders', error.stack);
+      throw error;
+    }
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} order`;
+  async findOne(id: string): Promise<Order> {
+    try {
+      const order = await this.orderModel
+        .findById(id)
+        .populate('user', 'first_name last_name email')
+        .populate('handieman', 'first_name last_name email handiemanProfile')
+        .exec();
+
+      if (!order) {
+        throw new BadRequestException('Order not found');
+      }
+
+      return order;
+    } catch (error) {
+      this.logger.error('Error fetching order', error.stack);
+      throw error;
+    }
   }
 
-  // update(id: number, updateOrderDto: UpdateOrderDto) {
-  //   return `This action updates a #${id} order`;
-  // }
+  async update(
+    id: string,
+    updateData: { status?: string; deliveryDate?: Date },
+  ): Promise<Order> {
+    try {
+      const order = await this.orderModel.findById(id);
 
-  remove(id: number) {
-    return `This action removes a #${id} order`;
+      if (!order) {
+        throw new BadRequestException('Order not found');
+      }
+
+      // Validate status transitions
+      if (updateData.status) {
+        const validTransitions = {
+          pending: ['in_progress', 'cancelled'],
+          in_progress: ['completed', 'cancelled'],
+          completed: [],
+          cancelled: [],
+        };
+
+        const currentStatus = order.status as keyof typeof validTransitions;
+        const allowedStatuses = validTransitions[currentStatus] || [];
+
+        if (!allowedStatuses.includes(updateData.status)) {
+          throw new BadRequestException(
+            `Cannot transition from ${order.status} to ${updateData.status}`,
+          );
+        }
+
+        order.status = updateData.status;
+      }
+
+      if (updateData.deliveryDate) {
+        order.deliveryDate = updateData.deliveryDate;
+      }
+
+      return await order.save();
+    } catch (error) {
+      this.logger.error('Error updating order', error.stack);
+      throw error;
+    }
+  }
+
+  async remove(id: string): Promise<{ message: string }> {
+    try {
+      const order = await this.orderModel.findById(id);
+
+      if (!order) {
+        throw new BadRequestException('Order not found');
+      }
+
+      // Only allow deletion of pending or cancelled orders
+      if (order.status !== 'pending' && order.status !== 'cancelled') {
+        throw new BadRequestException(
+          'Can only delete pending or cancelled orders',
+        );
+      }
+
+      await this.orderModel.findByIdAndDelete(id);
+
+      return { message: 'Order deleted successfully' };
+    } catch (error) {
+      this.logger.error('Error deleting order', error.stack);
+      throw error;
+    }
   }
 
   async getHandiemanOverview(sellerId: string, filter: string) {

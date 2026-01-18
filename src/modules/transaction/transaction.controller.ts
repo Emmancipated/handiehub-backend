@@ -3,17 +3,20 @@ import {
   Get,
   Post,
   Body,
-  Patch,
   Param,
-  Delete,
+  Query,
+  UseGuards,
+  Request,
 } from '@nestjs/common';
 import { TransactionService } from './transaction.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
-import { UpdateTransactionDto } from './dto/update-transaction.dto';
+import { WithdrawDto } from './dto/withdraw.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-@Controller('api/transaction')
+@Controller('transactions')
+// @UseGuards(JwtAuthGuard)
 export class TransactionController {
-  constructor(private readonly transactionService: TransactionService) {}
+  constructor(private readonly transactionService: TransactionService) { }
 
   @Post()
   create(@Body() createTransactionDto: CreateTransactionDto) {
@@ -21,40 +24,54 @@ export class TransactionController {
   }
 
   @Get()
-  findAll() {
-    return this.transactionService.findAll();
+  findAll(@Request() req, @Query() filters: any) {
+    const userId = req.user.userId;
+    return this.transactionService.findAll(userId, filters);
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.transactionService.findOne(+id);
+  @Get('wallet/balance')
+  getBalance(@Request() req) {
+    const userId = req.user.userId;
+    return this.transactionService.getBalance(userId);
   }
 
-  @Patch(':id')
-  update(
-    @Param('id') id: string,
-    @Body() updateTransactionDto: UpdateTransactionDto,
-  ) {
-    return this.transactionService.update(+id, updateTransactionDto);
+  @Post('wallet/withdraw')
+  requestWithdrawal(@Request() req, @Body() withdrawDto: WithdrawDto) {
+    const userId = req.user.userId;
+    return this.transactionService.requestWithdrawal(userId, withdrawDto);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.transactionService.remove(+id);
+  @Get('balance/:userId')
+  async getBalanceByUserId(@Param('userId') userId: string) {
+    return this.transactionService.getBalance(userId);
   }
 
   @Post('initialize-payment')
   async initializePayment(
     @Body('email') email: string,
     @Body('amount') amount: number,
-    @Body('reference') reference: string,
     @Body('callbackUrl') callbackUrl: string,
+    @Body('metadata') metadata?: any,
+    @Body('orderId') orderId?: string,
+    @Body('productId') productId?: string,
   ) {
     return this.transactionService.initializePayment(
       email,
       amount,
-      reference,
       callbackUrl,
+      metadata,
+      orderId,
+      productId,
     );
+  }
+
+  @Get('verify-payment')
+  async verifyPayment(@Query('trxref') trxref: string) {
+    return this.transactionService.verifyPayment(trxref);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.transactionService.findOne(id);
   }
 }

@@ -10,6 +10,8 @@ import { MessageModule } from '../message/message.module';
 import { JwtStrategy } from '../auth/jwt.strategy';
 import { JwtModule } from '@nestjs/jwt';
 import { jwtConstants } from '../auth/constants';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { UserListener } from './user.listerner';
 
 @Module({
   imports: [
@@ -20,9 +22,10 @@ import { jwtConstants } from '../auth/constants';
       secret: jwtConstants.secret,
       signOptions: { expiresIn: '86400s' },
     }),
+    EventEmitterModule,
   ],
   controllers: [UserController],
-  providers: [UserService, VerificationService, EmailService],
+  providers: [UserService, VerificationService, EmailService, UserListener],
   exports: [
     UserService,
     VerificationService,
@@ -31,4 +34,4 @@ import { jwtConstants } from '../auth/constants';
     EmailService,
   ],
 })
-export class UserModule {}
+export class UserModule { }

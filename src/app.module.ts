@@ -19,6 +19,11 @@ import { ProductModule } from './modules/product/product.module';
 import { SkuModule } from './modules/skucounter/sku.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
 import { PaystackModule } from './modules/paystack/paystack.module';
+import { ReviewModule } from './modules/review/review.module';
+import { CloudinaryModule } from './modules/cloudinary/cloudinary.module';
+import { SupabaseModule } from './modules/supabase/supabase.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+
 // mongodb://127.0.0.1:27017/
 @Module({
   imports: [
@@ -36,6 +41,7 @@ import { PaystackModule } from './modules/paystack/paystack.module';
       load: [config],
       envFilePath: '.env',
     }),
+    EventEmitterModule.forRoot(),
     // DogModule,
     UserModule,
     AuthModule,
@@ -46,10 +52,13 @@ import { PaystackModule } from './modules/paystack/paystack.module';
     SkuModule,
     TransactionModule,
     PaystackModule,
+    ReviewModule,
+    CloudinaryModule,
+    SupabaseModule,
     // DatabaseModule,
   ],
   controllers: [AppController, AdminController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }
 // envFilePath: ['.env.dev', '.env']

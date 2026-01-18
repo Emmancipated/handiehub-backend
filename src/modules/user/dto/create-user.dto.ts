@@ -1,12 +1,5 @@
 import { z } from 'zod';
 
-// const roleEnum = z.enum(['user', 'handieman', 'admin']);
-// const roleEnum = z
-//   .enum(['user', 'handieman', 'admin'])
-//   .refine((val) => ['user', 'handieman', 'admin'].includes(val), {
-//     message: 'Unrecognized user role',
-//   });
-
 const roleEnum = z.union([
   z.string().refine((val) => ['user', 'handieman', 'admin'].includes(val), {
     message: 'Unrecognized user role',
