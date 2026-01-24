@@ -12,6 +12,9 @@ export class HandiemanProfile {
   @Prop({ required: true })
   country: string;
 
+  @Prop()
+  city: string;
+
   @Prop({ required: true })
   address: string;
 
@@ -26,6 +29,9 @@ export class HandiemanProfile {
 
   @Prop({ type: [String], default: [], required: true })
   productsImageUrl: string[];
+
+  @Prop()
+  description: string;
 
   @Prop({ required: true })
   businessName: string;

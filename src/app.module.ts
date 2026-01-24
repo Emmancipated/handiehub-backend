@@ -34,6 +34,13 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
       inject: [ConfigService], // Inject ConfigService to access configuration
       useFactory: async (configService: ConfigService) => ({
         uri: `${configService.get('mongodb.database.connectionString')}/${configService.get('mongodb.database.databaseName')}`, // Use configuration values
+        // Connection pool optimization to reduce connection latency
+        maxPoolSize: 10, // Max number of connections in the pool
+        minPoolSize: 2, // Keep minimum connections alive
+        serverSelectionTimeoutMS: 5000, // Timeout for server selection
+        socketTimeoutMS: 45000, // Socket timeout
+        connectTimeoutMS: 10000, // Initial connection timeout
+        retryWrites: true,
       }),
     }),
     ConfigModule.forRoot({

@@ -13,8 +13,12 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     preflightContinue: false,
     optionsSuccessStatus: 204,
+    credentials: true,
   });
   app.use(helmet());
+
+  // Enable keep-alive connections to reduce connection overhead
+  app.enableShutdownHooks();
 
   // Capture raw body for the webhook
   app.use(

@@ -55,7 +55,14 @@ export class HandiemanService {
   async handieHubAccountUpdate(
     updateHandiemanDto: UpdateHandiemanDto,
   ): Promise<{ statusCode: HttpStatus; message: string }> {
-    const { email, productsImageUrl, ...rest } = updateHandiemanDto;
+    const { email, productsImageUrl, bizName, businessName, ...rest } =
+      updateHandiemanDto;
+
+    // Build profile data object, mapping bizName to businessName
+    const profileData: Record<string, any> = { ...rest };
+    if (bizName || businessName) {
+      profileData.businessName = bizName ?? businessName;
+    }
 
     try {
       // 1. Ensure the handiemanProfile object exists and is not null
@@ -72,8 +79,8 @@ export class HandiemanService {
 
       // Build the $set object with dot notation
       const setFields: any = {};
-      Object.keys(rest).forEach((key) => {
-        setFields[`handiemanProfile.${key}`] = rest[key];
+      Object.keys(profileData).forEach((key) => {
+        setFields[`handiemanProfile.${key}`] = profileData[key];
       });
 
       if (Object.keys(setFields).length > 0) {
@@ -88,6 +95,8 @@ export class HandiemanService {
           },
         };
       }
+
+      this.logger.log('Update query:', JSON.stringify(updateQuery, null, 2));
 
       await this.userModel.findOneAndUpdate({ email }, updateQuery, {
         new: true,
