@@ -1,84 +1,83 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createTransport, SendMailOptions, Transporter } from 'nodemailer';
+import { Resend } from 'resend';
 import { SendEmailDto } from './dto/send-email.dto';
 
 @Injectable()
-export class EmailService {
-  private mailTransport: Transporter;
+export class EmailService implements OnModuleInit {
+  private readonly logger = new Logger(EmailService.name);
+  private resend: Resend;
+  private fromEmail: string;
+  private fromName: string;
 
   constructor(private configService: ConfigService) {
-    // this.mailTransport = createTransport({
-    //   host: this.configService.get('MAIL_HOST'),
-    //   port: Number(this.configService.get('MAIL_PORT')),
-    //   secure: false, // TODO: upgrade later with STARTTLS
-    //   auth: {
-    //     user: this.configService.get('MAIL_USER'),
-    //     pass: this.configService.get('MAIL_PASSWORD'),
-    //   },
-    // });
-    this.mailTransport = createTransport({
-      host: this.configService.get('MAIL_HOST'),
-      // port: Number(this.configService.get('MAIL_PORT')),
-      // secure: false, // Use true if port is 465
-      port: 465,
-      secure: true, // use SSL
-      auth: {
-        user: this.configService.get('MAIL_USER'),
-        pass: this.configService.get('MAIL_PASSWORD'),
-      },
-    });
+    const apiKey = this.configService.get('RESEND_API_KEY');
+    
+    if (!apiKey) {
+      this.logger.error('⚠️ RESEND_API_KEY is not set! Email sending will fail.');
+    } else {
+      this.logger.log(`Resend API Key configured: ${apiKey.substring(0, 8)}...`);
+    }
+
+    this.resend = new Resend(apiKey);
+    
+    // Set default sender - use your verified domain or onboarding@resend.dev for testing
+    this.fromEmail = this.configService.get('MAIL_SENDER_DEFAULT') || 'onboarding@resend.dev';
+    this.fromName = this.configService.get('MAIL_SENDER_NAME_DEFAULT') || 'HandieHub';
+  }
+
+  async onModuleInit() {
+    // Test the API key on startup
+    const apiKey = this.configService.get('RESEND_API_KEY');
+    if (apiKey) {
+      this.logger.log('✅ Resend email service initialized');
+      this.logger.log(`   From: ${this.fromName} <${this.fromEmail}>`);
+    } else {
+      this.logger.error('❌ Resend not configured - RESEND_API_KEY missing');
+    }
   }
 
   async sendEmail(data: SendEmailDto): Promise<{ success: boolean } | null> {
     const { sender, recipients, subject, html, text } = data;
-    // const url = `http://your-frontend-app/verify-email?token=${token}`;
 
-    // const mailOptions: SendMailOptions = {
-    //   from: sender ?? {
-    //     name: this.configService.get('MAIL_SENDER_NAME_DEFAULT'),
-    //     address: this.configService.get('MAIL_SENDER_DEFAULT'),
-    //   },
-    //   to: recipients,
-    //   subject,
-    //   html, // valid HTML body
-    //   text, // plain text body
-    // };
+    // Build the "from" address
+    const fromAddress = sender 
+      ? `${sender.name} <${sender.address}>`
+      : `${this.fromName} <${this.fromEmail}>`;
 
-    const mailOptions: SendMailOptions = {
-      from: sender ?? {
-        name: this.configService.get('MAIL_SENDER_NAME_DEFAULT'),
-        address: this.configService.get('MAIL_SENDER_DEFAULT'),
-      },
-      replyTo: 'reply-to@example.com', // Reply-to address
-      to: recipients, // Recipient email address(es)
-      date: new Date(), // Optional: set a custom date
-      subject, // Email subject
-      html, // HTML message body
-      text, // Plain text body (optional)
+    // Convert recipients to email strings
+    const toAddresses = recipients.map(r => 
+      typeof r === 'string' ? r : r.address
+    );
 
-      // Optional: add `mailed-by` and `signed-by` using custom headers
-      headers: {
-        'mailed-by': this.configService.get('MAIL_HOST'),
-        'signed-by': this.configService.get('MAIL_SENDER_DEFAULT'),
-      },
+    this.logger.log(`Attempting to send email to: ${toAddresses.join(', ')}`);
 
-      // Optional: add an unsubscribe link header
-      list: {
-        unsubscribe: [
-          {
-            url: 'https://yourapp.com/unsubscribe?email=recipient@example.com',
-            comment: 'Unsubscribe from these emails',
-          },
-        ],
-      },
-    };
     try {
-      await this.mailTransport.sendMail(mailOptions);
+      const { data: result, error } = await this.resend.emails.send({
+        from: fromAddress,
+        to: toAddresses,
+        subject,
+        html,
+        text,
+      });
+
+      if (error) {
+        this.logger.error('❌ Resend error:', error.message);
+        this.logger.error('Error details:', JSON.stringify(error, null, 2));
+        
+        if (error.message?.includes('API key')) {
+          this.logger.error('🔑 Check your RESEND_API_KEY is correct');
+        } else if (error.message?.includes('domain')) {
+          this.logger.error('🌐 Domain not verified. Use onboarding@resend.dev for testing');
+        }
+        
+        return null;
+      }
+
+      this.logger.log(`✅ Email sent successfully! ID: ${result?.id}`);
       return { success: true };
     } catch (error) {
-      console.log(error, 'This is why it did not work');
-      // handle error
+      this.logger.error('❌ Email sending failed:', error.message);
       return null;
     }
   }
