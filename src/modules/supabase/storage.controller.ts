@@ -86,8 +86,6 @@ export class StorageController {
     @UseGuards(JwtAuthGuard)
     async generateUploadUrl(@Body() dto: CreateUploadUrlDto, @Req() req) {
         // 1. Extract User ID from the Request
-        // Based on your login code, 'sub' holds the user ID.
-        // However, check your JwtStrategy.validate() method to see if you mapped 'sub' to 'userId'.
         const userId = req.user.userId || req.user.sub;
 
         // 2. Pass userId to your service to build the path
@@ -100,6 +98,13 @@ export class StorageController {
 
         // 4. Get the display URL
         const publicUrl = this.supabaseService.getPublicUrl(path);
+        
+        // Debug: Log what we're returning
+        console.log("Returning to frontend:", { 
+            signedUrl: signedUrl ? 'present' : 'missing', 
+            path, 
+            publicUrl 
+        });
 
         return { signedUrl, path, publicUrl };
     }

@@ -19,6 +19,11 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { SkuService } from '../skucounter/sku.service';
 import { Category } from './schema/product.schema';
 import { Brand } from './schema/product.schema';
+import {
+  CATEGORIES,
+  getCategoryById as getCategoryFromConstants,
+  getFeaturedCategories,
+} from 'src/constants/categories';
 
 @Injectable()
 export class ProductService {
@@ -35,48 +40,152 @@ export class ProductService {
     createProductDto: CreateProductDto,
   ): Promise<Product | { statusCode: number; message: string }> {
     const {
+      // Basic Info
       name,
-      amount,
-      status,
+      shortDescription,
       description,
+      type,
+
+      // Categorization
+      category,
+      subCategory,
+      brandName,
+
+      // Media
       images,
+
+      // Pricing
+      amount,
+      discountedPrice,
+      pricingType,
+      currency,
+
+      // Product-specific
+      quantity,
+      condition,
+      weight,
+      color,
+      model,
+      supplierSku,
+
+      // Service-specific
+      estimatedDuration,
+      serviceArea,
+      availability,
+
+      // Policies
+      returnPolicy,
+      hasWarranty,
+      warrantyDuration,
+      warrantyDetails,
+
+      // SEO
+      tags,
+
+      // Status
+      status,
+      isActive,
+
+      // Seller
+      handieman,
+
+      // Legacy
+      categoryCode,
       createdAt,
       updatedAt,
-      handieman,
-      category,
-      categoryCode,
-      type,
-      brand,
-      tags,
     } = createProductDto as CreateProductDto & {
-      brand?: string;
-      tags?: string[];
+      shortDescription?: string;
+      subCategory?: string;
+      brandName?: string;
+      discountedPrice?: number;
+      pricingType?: string;
+      currency?: string;
+      quantity?: number;
+      condition?: string;
+      weight?: number;
+      color?: string;
+      model?: string;
+      supplierSku?: string;
+      estimatedDuration?: number;
+      serviceArea?: string;
+      availability?: string[];
+      returnPolicy?: string;
+      hasWarranty?: boolean;
+      warrantyDuration?: string;
+      warrantyDetails?: string;
+      isActive?: boolean;
     };
 
-    const productId = `${categoryCode}-${randomUUID()}`;
-    try {
-      // Removed race-condition prone check. Database unique index will handle this.
+    // Generate unique identifiers
+    const typePrefix = type === 'service' ? 'SVC' : 'PRD';
+    const catCode = categoryCode || category || 'GEN';
+    const productId = `${typePrefix}-${catCode}-${randomUUID()}`;
 
+    // Helper to convert empty strings to undefined
+    const emptyToUndefined = (val: string | undefined) =>
+      val && val.trim() !== '' ? val.trim() : undefined;
+
+    try {
       const sku = await this.skuService.getNextSKU();
       const slug = `${this.generateSlug(name)}-${sku}`;
 
       const createdProduct = new this.productModel({
+        // Basic Info
         productId,
         name,
-        amount,
-        status,
+        shortDescription: emptyToUndefined(shortDescription),
         description,
-        images,
-        createdAt,
-        updatedAt,
-        handieman,
-        category,
-        categoryCode,
         type,
-        brand,
-        tags,
+
+        // Categorization
+        category: emptyToUndefined(category),
+        subCategory: emptyToUndefined(subCategory),
+        brandName: emptyToUndefined(brandName) || '-',
+
+        // Media
+        images,
+
+        // Pricing
+        amount,
+        discountedPrice,
+        pricingType: pricingType || 'fixed',
+        currency: currency || 'NGN',
+
+        // Product-specific
+        quantity: type === 'product' ? (quantity || 0) : undefined,
+        condition: type === 'product' ? (condition || 'new') : undefined,
+        weight,
+        color,
+        model,
+        supplierSku,
+
+        // Service-specific
+        estimatedDuration: type === 'service' ? estimatedDuration : undefined,
+        serviceArea: type === 'service' ? serviceArea : undefined,
+        availability: type === 'service' ? availability : undefined,
+
+        // Policies
+        returnPolicy: returnPolicy || '7_days',
+        hasWarranty: hasWarranty || false,
+        warrantyDuration,
+        warrantyDetails,
+
+        // SEO
+        tags: tags || [],
         sku,
         slug,
+
+        // Status
+        status: status || 'pending',
+        isActive: isActive !== undefined ? isActive : true,
+
+        // Seller
+        handieman,
+
+        // Legacy
+        categoryCode: catCode,
+        createdAt: createdAt || new Date(),
+        updatedAt: updatedAt || new Date(),
       });
 
       await createdProduct.save();
@@ -84,11 +193,13 @@ export class ProductService {
       return {
         statusCode: HttpStatus.OK,
         message:
-          'Product has been created successfully, you would be notified once product is verified',
+          type === 'service'
+            ? 'Service has been created successfully! It will be reviewed shortly.'
+            : 'Product has been created successfully! It will be reviewed shortly.',
       };
     } catch (error) {
       if (error.code === 11000) {
-        throw new BadRequestException('Product with this ID or Slug already exists');
+        throw new BadRequestException('A listing with this ID or slug already exists');
       }
       if (error instanceof MongooseError.ValidationError) {
         this.logger.error(
@@ -114,41 +225,89 @@ export class ProductService {
   async getProducts(page: number, limit: number) {
     const skip = (page - 1) * limit;
 
+    // Only fetch approved and active products/services
     const products = await this.productModel
-      .find()
+      .find({
+        status: 'approved',
+        isActive: true,
+      })
       .skip(skip)
       .limit(limit)
-      .populate('handieman category brand');
+      .sort({ createdAt: -1 }) // Newest first
+      .populate({
+        path: 'handieman',
+        select: 'first_name last_name email phone handiemanProfile',
+      });
+
+    // Get total count for pagination
+    const totalCount = await this.productModel.countDocuments({
+      status: 'approved',
+      isActive: true,
+    });
 
     const productsWithSellers = products.map((product) => {
-      const handiemanDetails = {
-        firstName: product.handieman?.first_name,
-        lastName: product.handieman?.last_name,
-        businessName: product.handieman?.handiemanProfile?.businessName || null,
-        image: product.handieman?.handiemanProfile?.dp_url,
+      // Cast to any since handieman is populated with user data
+      const handieman = product.handieman as any;
+      
+      // Extract only necessary seller info
+      const seller = {
+        id: handieman?._id || null,
+        firstName: handieman?.first_name || '',
+        lastName: handieman?.last_name || '',
+        fullName: `${handieman?.first_name || ''} ${handieman?.last_name || ''}`.trim() || 'HandieMan',
+        businessName: handieman?.handiemanProfile?.businessName || null,
+        profileImage: handieman?.handiemanProfile?.dp_url || null,
+        isVerified: handieman?.handiemanProfile?.isVerified || false,
+        phone: handieman?.phone || null,
       };
 
+      // Return product with clean seller data (remove full handieman object)
+      const productObj = product.toObject();
+      delete productObj.handieman; // Remove full handieman data
+
       return {
-        ...product.toObject(),
-        handiemanDetails,
+        ...productObj,
+        seller,
       };
     });
 
     return {
       statusCode: HttpStatus.OK,
       data: productsWithSellers,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalCount / limit),
+        totalItems: totalCount,
+        itemsPerPage: limit,
+        hasMore: skip + products.length < totalCount,
+      },
     };
   }
 
   async findOne(id: string): Promise<any> {
-    const product = await this.productModel
-      .findOne({ slug: id })
-      .populate({
-        path: 'handieman',
-        select: 'first_name last_name handiemanProfile',
-      })
-      .populate('category brand')
-      .exec();
+    // Try to find by _id first (if valid ObjectId), then by slug
+    let product;
+    
+    if (Types.ObjectId.isValid(id)) {
+      product = await this.productModel
+        .findById(id)
+        .populate({
+          path: 'handieman',
+          select: 'first_name last_name email phone handiemanProfile',
+        })
+        .exec();
+    }
+    
+    // If not found by _id, try slug
+    if (!product) {
+      product = await this.productModel
+        .findOne({ slug: id })
+        .populate({
+          path: 'handieman',
+          select: 'first_name last_name email phone handiemanProfile',
+        })
+        .exec();
+    }
 
     if (!product) {
       throw new NotFoundException(
@@ -156,21 +315,34 @@ export class ProductService {
       );
     }
 
-    // Format seller details
-    const handiemanDetails = {
-      firstName: product.handieman?.first_name || '',
-      lastName: product.handieman?.last_name || '',
-      businessName: product.handieman?.handiemanProfile?.businessName || 'HandieMan',
-      image: product.handieman?.handiemanProfile?.dp_url || '',
-      isVerified: product.handieman?.handiemanProfile?.isVerified || false,
-      responseTime: product.handieman?.handiemanProfile?.responseTime || '2 hours',
+    // Cast to any since handieman is populated with user data
+    const handieman = product.handieman as any;
+    
+    // Format seller details (consistent with other methods)
+    const seller = {
+      id: handieman?._id || null,
+      firstName: handieman?.first_name || '',
+      lastName: handieman?.last_name || '',
+      fullName: `${handieman?.first_name || ''} ${handieman?.last_name || ''}`.trim() || 'HandieMan',
+      businessName: handieman?.handiemanProfile?.businessName || null,
+      profileImage: handieman?.handiemanProfile?.dp_url || null,
+      isVerified: handieman?.handiemanProfile?.isVerified || false,
+      phone: handieman?.phone || null,
+      // Additional info for product detail page
+      bio: handieman?.handiemanProfile?.bio || null,
+      responseTime: handieman?.handiemanProfile?.responseTime || '2 hours',
+      rating: handieman?.handiemanProfile?.rating || 0,
+      totalReviews: handieman?.handiemanProfile?.totalReviews || 0,
     };
+
+    const productObj = product.toObject();
+    delete productObj.handieman;
 
     const response = {
       statusCode: HttpStatus.OK,
       data: {
-        ...product.toObject(),
-        handiemanDetails,
+        ...productObj,
+        seller,
       },
     };
 
@@ -203,8 +375,55 @@ export class ProductService {
     };
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} product`;
+  /**
+   * 🗑️ DELETE PRODUCT
+   */
+  async remove(id: string): Promise<{ statusCode: number; message: string }> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
+    const deletedProduct = await this.productModel.findByIdAndDelete(id).exec();
+
+    if (!deletedProduct) {
+      throw new NotFoundException('Product not found');
+    }
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Product deleted successfully',
+    };
+  }
+
+  /**
+   * 👤 GET PRODUCTS BY HANDIEMAN (SELLER)
+   */
+  async getProductsByHandieman(handiemanId: string, page: number = 1, limit: number = 20) {
+    const skip = (page - 1) * limit;
+
+    if (!Types.ObjectId.isValid(handiemanId)) {
+      throw new BadRequestException('Invalid handieman ID');
+    }
+
+    const products = await this.productModel
+      .find({ handieman: handiemanId })
+      .sort({ createdAt: -1 }) // Most recent first
+      .skip(skip)
+      .limit(limit)
+      .exec();
+
+    const total = await this.productModel.countDocuments({ handieman: handiemanId });
+
+    return {
+      statusCode: HttpStatus.OK,
+      data: products,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   /**
@@ -265,55 +484,63 @@ export class ProductService {
   async getProductsByCategory(category: string, page: number = 1, limit: number = 20) {
     const skip = (page - 1) * limit;
 
-    // Try to find category by ID or name
-    let categoryFilter: any;
+    // Search by category string (case-insensitive), only approved and active
+    const categoryFilter = {
+      category: new RegExp(`^${category}$`, 'i'),
+      status: 'approved',
+      isActive: true,
+    };
 
-    if (isValidObjectId(category)) {
-      // If it's a valid ObjectId, search by category ID
-      categoryFilter = { category: category };
-    } else {
-      // Otherwise, search by category name
-      const categoryDoc = await this.categoryModel.findOne({
-        name: new RegExp(`^${category}$`, 'i')
-      }).lean();
-
-      if (!categoryDoc) {
-        return {
-          statusCode: HttpStatus.OK,
-          data: [],
-          message: 'No products found for this category',
-        };
-      }
-
-      categoryFilter = { category: categoryDoc._id };
-    }
-
-    // Fetch products with pagination and populate related fields
+    // Fetch products with pagination and populate only necessary seller fields
     const products = await this.productModel
       .find(categoryFilter)
       .skip(skip)
       .limit(limit)
-      .populate('handieman category brand')
+      .sort({ createdAt: -1 })
+      .populate({
+        path: 'handieman',
+        select: 'first_name last_name email phone handiemanProfile',
+      })
       .exec();
 
-    // Map through the products and include seller details
+    // Get total count for pagination
+    const totalCount = await this.productModel.countDocuments(categoryFilter);
+
+    // Map through the products and include clean seller details
     const productsWithSellers = products.map((product) => {
-      const handiemanDetails = {
-        firstName: product.handieman?.first_name,
-        lastName: product.handieman?.last_name,
-        businessName: product.handieman?.handiemanProfile?.businessName || null,
-        image: product.handieman?.handiemanProfile?.dp_url,
+      // Cast to any since handieman is populated with user data
+      const handieman = product.handieman as any;
+      
+      const seller = {
+        id: handieman?._id || null,
+        firstName: handieman?.first_name || '',
+        lastName: handieman?.last_name || '',
+        fullName: `${handieman?.first_name || ''} ${handieman?.last_name || ''}`.trim() || 'HandieMan',
+        businessName: handieman?.handiemanProfile?.businessName || null,
+        profileImage: handieman?.handiemanProfile?.dp_url || null,
+        isVerified: handieman?.handiemanProfile?.isVerified || false,
+        phone: handieman?.phone || null,
       };
 
+      const productObj = product.toObject();
+      delete productObj.handieman;
+
       return {
-        ...product.toObject(),
-        handiemanDetails,
+        ...productObj,
+        seller,
       };
     });
 
     return {
       statusCode: HttpStatus.OK,
       data: productsWithSellers,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalCount / limit),
+        totalItems: totalCount,
+        itemsPerPage: limit,
+        hasMore: skip + products.length < totalCount,
+      },
     };
   }
 
@@ -331,29 +558,197 @@ export class ProductService {
       .find({
         category: product.category,
         _id: { $ne: productId },
-        status: 'approved', // Only show approved products
+        status: 'approved',
+        isActive: true,
       })
       .limit(limit)
-      .populate('handieman category brand')
+      .sort({ createdAt: -1 })
+      .populate({
+        path: 'handieman',
+        select: 'first_name last_name email phone handiemanProfile',
+      })
       .exec();
 
     const relatedWithSellers = related.map((item) => {
-      const handiemanDetails = {
-        firstName: item.handieman?.first_name,
-        lastName: item.handieman?.last_name,
-        businessName: item.handieman?.handiemanProfile?.businessName || null,
-        image: item.handieman?.handiemanProfile?.dp_url,
+      // Cast to any since handieman is populated with user data
+      const handieman = item.handieman as any;
+      
+      const seller = {
+        id: handieman?._id || null,
+        firstName: handieman?.first_name || '',
+        lastName: handieman?.last_name || '',
+        fullName: `${handieman?.first_name || ''} ${handieman?.last_name || ''}`.trim() || 'HandieMan',
+        businessName: handieman?.handiemanProfile?.businessName || null,
+        profileImage: handieman?.handiemanProfile?.dp_url || null,
+        isVerified: handieman?.handiemanProfile?.isVerified || false,
       };
 
+      const itemObj = item.toObject();
+      delete itemObj.handieman;
+
       return {
-        ...item.toObject(),
-        handiemanDetails,
+        ...itemObj,
+        seller,
       };
     });
 
     return {
       statusCode: HttpStatus.OK,
       data: relatedWithSellers,
+    };
+  }
+
+  /**
+   * 📊 GET ALL CATEGORIES WITH STATS
+   * Returns categories with real product and service counts from the database
+   */
+  async getCategoriesWithStats() {
+    // Aggregate counts per category for approved and active listings
+    const categoryCounts = await this.productModel.aggregate([
+      {
+        $match: {
+          status: 'approved',
+          isActive: true,
+        },
+      },
+      {
+        $group: {
+          _id: { category: '$category', type: '$type' },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Process counts into a map
+    const countMap: Record<string, { products: number; services: number }> = {};
+    categoryCounts.forEach((item) => {
+      const categoryId = item._id.category?.toLowerCase() || 'other';
+      if (!countMap[categoryId]) {
+        countMap[categoryId] = { products: 0, services: 0 };
+      }
+      if (item._id.type === 'product') {
+        countMap[categoryId].products = item.count;
+      } else if (item._id.type === 'service') {
+        countMap[categoryId].services = item.count;
+      }
+    });
+
+    // Merge with category constants to return full category data
+    const categoriesWithStats = CATEGORIES.map((category) => ({
+      id: category.id,
+      name: category.name,
+      icon: category.icon,
+      description: category.description,
+      color: category.color,
+      type: category.type,
+      featured: category.featured || false,
+      order: category.order || 99,
+      productCount: countMap[category.id]?.products || 0,
+      serviceCount: countMap[category.id]?.services || 0,
+      totalListings:
+        (countMap[category.id]?.products || 0) +
+        (countMap[category.id]?.services || 0),
+      subCategories: category.subCategories,
+    }));
+
+    // Sort by order
+    categoriesWithStats.sort((a, b) => a.order - b.order);
+
+    return {
+      statusCode: HttpStatus.OK,
+      data: categoriesWithStats,
+      summary: {
+        totalCategories: categoriesWithStats.length,
+        totalProducts: Object.values(countMap).reduce(
+          (sum, c) => sum + c.products,
+          0,
+        ),
+        totalServices: Object.values(countMap).reduce(
+          (sum, c) => sum + c.services,
+          0,
+        ),
+      },
+    };
+  }
+
+  /**
+   * 🌟 GET FEATURED CATEGORIES WITH STATS
+   * Returns only featured categories (for home page)
+   */
+  async getFeaturedCategoriesWithStats() {
+    const result = await this.getCategoriesWithStats();
+    const featured = result.data.filter((cat) => cat.featured);
+
+    return {
+      statusCode: HttpStatus.OK,
+      data: featured.slice(0, 8), // Limit to 8 featured categories
+    };
+  }
+
+  /**
+   * 📂 GET SUB-CATEGORIES WITH STATS
+   * Returns sub-categories for a specific category with counts
+   */
+  async getSubCategoriesWithStats(categoryId: string) {
+    const category = getCategoryFromConstants(categoryId);
+
+    if (!category) {
+      throw new NotFoundException(`Category "${categoryId}" not found`);
+    }
+
+    // Aggregate counts per sub-category for approved and active listings
+    const subCategoryCounts = await this.productModel.aggregate([
+      {
+        $match: {
+          category: new RegExp(`^${categoryId}$`, 'i'),
+          status: 'approved',
+          isActive: true,
+        },
+      },
+      {
+        $group: {
+          _id: { subCategory: '$subCategory', type: '$type' },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Process counts into a map
+    const countMap: Record<string, { products: number; services: number }> = {};
+    subCategoryCounts.forEach((item) => {
+      const subCatId = item._id.subCategory?.toLowerCase() || 'uncategorized';
+      if (!countMap[subCatId]) {
+        countMap[subCatId] = { products: 0, services: 0 };
+      }
+      if (item._id.type === 'product') {
+        countMap[subCatId].products = item.count;
+      } else if (item._id.type === 'service') {
+        countMap[subCatId].services = item.count;
+      }
+    });
+
+    // Merge with sub-category constants
+    const subCategoriesWithStats = category.subCategories.map((subCat) => ({
+      id: subCat.id,
+      name: subCat.name,
+      description: subCat.description || '',
+      productCount: countMap[subCat.id]?.products || 0,
+      serviceCount: countMap[subCat.id]?.services || 0,
+      totalListings:
+        (countMap[subCat.id]?.products || 0) +
+        (countMap[subCat.id]?.services || 0),
+    }));
+
+    return {
+      statusCode: HttpStatus.OK,
+      category: {
+        id: category.id,
+        name: category.name,
+        icon: category.icon,
+        description: category.description,
+        color: category.color,
+      },
+      data: subCategoriesWithStats,
     };
   }
 

@@ -204,12 +204,14 @@ export class SupabaseService {
         if (!path) return '';
         if (path.startsWith('http')) return path; // Already a URL
 
-        // OPTION A: Use Supabase SDK (Easiest)
-        // const { data } = this.supabase.storage.from(this.bucket).getPublicUrl(path);
-        // return data.publicUrl;
+        // Log for debugging
+        this.logger.log(`Constructing public URL - supabaseUrl: ${this.supabaseUrl}, bucket: ${this.bucket}, path: ${path}`);
 
-        // OPTION B: Manual Construction (FASTEST & Best for Migration logic)
-        // This avoids an SDK call and lets you easily swap the domain later if you move to Cloudinary
-        return `${this.supabaseUrl}/storage/v1/object/public/${this.bucket}/${path}`;
+        // Use Supabase SDK method for reliability
+        const { data } = this.supabase.storage.from(this.bucket).getPublicUrl(path);
+        
+        this.logger.log(`Generated publicUrl: ${data.publicUrl}`);
+        
+        return data.publicUrl;
     }
 }
