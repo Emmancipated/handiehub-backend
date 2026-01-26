@@ -43,8 +43,8 @@ const baseSchema = z.object({
   status: z.enum(['draft', 'pending', 'approved', 'declined', 'archived']).default('pending'),
   isActive: z.boolean().default(true),
 
-  // Seller
-  handieman: z.string(),
+  // Seller - Optional in request, will be set from JWT token on the backend
+  handieman: z.string().optional(),
 
   // Legacy
   categoryCode: z.string().optional(),

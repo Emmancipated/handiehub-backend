@@ -349,6 +349,17 @@ export class ProductService {
     return response;
   }
 
+  /**
+   * 🔍 FIND ONE RAW (for ownership verification)
+   * Returns raw product document without population or transformation
+   */
+  async findOneRaw(id: string): Promise<Product | null> {
+    if (!Types.ObjectId.isValid(id)) {
+      return null;
+    }
+    return this.productModel.findById(id).exec();
+  }
+
   async update(
     id: string,
     updateProductDto: UpdateProductDto,

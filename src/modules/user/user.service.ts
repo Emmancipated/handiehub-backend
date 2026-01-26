@@ -55,17 +55,40 @@ export class UserService {
 
   /**
      * Creates a new user with transaction safety and decoupled side effects.
+     * Prevents duplicate email registration - users should update their role instead of creating new accounts.
      */
   async createUser(createUserDto: CreateUserDto): Promise<User> {
     const { first_name, last_name, email, password, role } = createUserDto;
     const lowercaseEmail = email.toLowerCase().trim();
+
+    // Check if user already exists with this email
+    const existingUser = await this.userModel.findOne({ email: lowercaseEmail }).exec();
+    
+    if (existingUser) {
+      // If user exists and is trying to sign up as handieman
+      if (role === 'handieman') {
+        // Check if they're already a handieman
+        if (existingUser.role.includes('handieman')) {
+          throw new ConflictException(
+            'An account with this email already exists and is already registered as a seller/handieman. Please log in instead.',
+          );
+        }
+        // User exists as regular user but wants to become handieman
+        throw new ConflictException(
+          'An account with this email already exists. Please log in to your existing account and upgrade to a seller account from your profile settings.',
+        );
+      }
+      // Regular signup attempt with existing email
+      throw new ConflictException(
+        'An account with this email already exists. Please log in or use a different email address.',
+      );
+    }
 
     // 1. Preparation: Hash password
     const salt = await bcrypt.genSalt();
     const hashedPassword = await bcrypt.hash(password, salt);
 
     // 2. Start Transaction (ACID Compliance)
-    // This ensures that if we add more DB steps later, they all succeed or fail together.
     const session = await this.connection.startSession();
     session.startTransaction();
 
@@ -80,20 +103,28 @@ export class UserService {
       });
 
       // Pass the session to the save method
-      const savedUser = await newUser.save();
+      const savedUser = await newUser.save({ session });
+
+      // Commit the transaction
+      await session.commitTransaction();
 
       // 3. Decouple Side Effects (The Scalable Way)
       // Instead of waiting for the email service (slow), we emit an event.
       // A separate Listener handles the OTP sending.
       this.eventEmitter.emit('user.created', savedUser);
 
+      this.logger.log(`New user created: ${lowercaseEmail} with role: ${role}`);
+
       // 4. Return the Entity
-      // Services should return Data (User). 
-      // The Controller is responsible for formatting the JSON response (statusCode, message).
       return savedUser;
 
     } catch (error) {
+      // Abort the transaction on error
+      await session.abortTransaction();
       this.handleMongoError(error);
+    } finally {
+      // Always end the session
+      session.endSession();
     }
   }
 

@@ -3,9 +3,16 @@ import { AppModule } from './app.module';
 import * as express from 'express';
 import * as bodyParser from 'body-parser';
 import helmet from 'helmet';
+import { Logger } from '@nestjs/common';
+import { GlobalExceptionFilter } from './filters/http-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn', 'log', 'debug'],
+  });
+
+  // Global exception filter for logging all errors
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   // Security
   app.enableCors({
@@ -33,6 +40,9 @@ async function bootstrap() {
   app.use(bodyParser.json());
   const port = process.env.PORT || 3000;
   await app.listen(port);
+  
+  const logger = new Logger('Bootstrap');
+  logger.log(`🚀 Application is running on port ${port}`);
 }
 bootstrap();
 // import { NestFactory } from '@nestjs/core';
