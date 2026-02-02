@@ -12,10 +12,16 @@ import { JwtModule } from '@nestjs/jwt';
 import { jwtConstants } from '../auth/constants';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { UserListener } from './user.listerner';
+import { Order, OrderSchema } from '../orders/schema/order.schema';
+import { Review, ReviewSchema } from '../review/schema/review.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+    MongooseModule.forFeature([
+      { name: User.name, schema: UserSchema },
+      { name: Order.name, schema: OrderSchema },
+      { name: Review.name, schema: ReviewSchema },
+    ]),
     // VerificationModule,
     // MessageModule
     JwtModule.register({

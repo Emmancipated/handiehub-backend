@@ -3,6 +3,7 @@ import { HydratedDocument } from 'mongoose';
 import * as mongoose from 'mongoose';
 import { User } from 'src/modules/user/schemas/user.schema';
 import { Order } from 'src/modules/orders/schema/order.schema';
+import { Product } from 'src/modules/product/schema/product.schema';
 
 export type ReviewDocument = HydratedDocument<Review>;
 
@@ -18,16 +19,28 @@ export class Review {
     reviewer: User; // Person giving the review
 
     @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true })
-    reviewee: User; // Person being reviewed (handieman)
+    reviewee: User; // Person being reviewed (handieman/seller)
 
     @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true })
     order: Order;
+
+    @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Product', default: null })
+    product: Product; // Optional product being reviewed
 
     @Prop({ type: [String], default: [] })
     images: string[];
 
     @Prop({ default: true })
     isVisible: boolean;
+
+    @Prop({ type: String, default: null })
+    sellerResponse: string; // Seller can respond to the review
+
+    @Prop({ type: Date, default: null })
+    sellerResponseAt: Date;
+
+    @Prop({ default: false })
+    isVerifiedPurchase: boolean;
 
     @Prop({ default: Date.now })
     createdAt: Date;
@@ -37,3 +50,9 @@ export class Review {
 }
 
 export const ReviewSchema = SchemaFactory.createForClass(Review);
+
+// Indexes for efficient queries
+ReviewSchema.index({ product: 1, isVisible: 1 });
+ReviewSchema.index({ reviewee: 1, isVisible: 1 });
+ReviewSchema.index({ reviewer: 1 });
+ReviewSchema.index({ order: 1 });

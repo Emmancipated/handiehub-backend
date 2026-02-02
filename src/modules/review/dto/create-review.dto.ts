@@ -31,7 +31,17 @@ export class CreateReviewDto {
     @IsNotEmpty()
     orderId: string;
 
+    @IsString()
+    @IsOptional()
+    productId?: string;
+
     @IsArray()
     @IsOptional()
     images?: string[];
+}
+
+export class SellerResponseDto {
+    @IsString()
+    @IsNotEmpty()
+    response: string;
 }

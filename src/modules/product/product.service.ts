@@ -225,11 +225,16 @@ export class ProductService {
   async getProducts(page: number, limit: number) {
     const skip = (page - 1) * limit;
 
-    // Only fetch approved and active products/services
+    // Only fetch approved, active products/services
+    // For products (not services), also filter out items with quantity <= 0
     const products = await this.productModel
       .find({
         status: 'approved',
         isActive: true,
+        $or: [
+          { type: 'service' }, // Services don't have stock limits
+          { type: 'product', quantity: { $gt: 0 } }, // Products must have stock
+        ],
       })
       .skip(skip)
       .limit(limit)
@@ -239,10 +244,14 @@ export class ProductService {
         select: 'first_name last_name email phone handiemanProfile',
       });
 
-    // Get total count for pagination
+    // Get total count for pagination (same filter)
     const totalCount = await this.productModel.countDocuments({
       status: 'approved',
       isActive: true,
+      $or: [
+        { type: 'service' },
+        { type: 'product', quantity: { $gt: 0 } },
+      ],
     });
 
     const productsWithSellers = products.map((product) => {
@@ -251,7 +260,7 @@ export class ProductService {
       
       // Extract only necessary seller info
       const seller = {
-        id: handieman?._id || null,
+        id: handieman?._id?.toString() || null,
         firstName: handieman?.first_name || '',
         lastName: handieman?.last_name || '',
         fullName: `${handieman?.first_name || ''} ${handieman?.last_name || ''}`.trim() || 'HandieMan',
@@ -320,7 +329,7 @@ export class ProductService {
     
     // Format seller details (consistent with other methods)
     const seller = {
-      id: handieman?._id || null,
+      id: handieman?._id?.toString() || null,
       firstName: handieman?.first_name || '',
       lastName: handieman?.last_name || '',
       fullName: `${handieman?.first_name || ''} ${handieman?.last_name || ''}`.trim() || 'HandieMan',
@@ -496,10 +505,15 @@ export class ProductService {
     const skip = (page - 1) * limit;
 
     // Search by category string (case-insensitive), only approved and active
+    // Also filter out out-of-stock products (not services)
     const categoryFilter = {
       category: new RegExp(`^${category}$`, 'i'),
       status: 'approved',
       isActive: true,
+      $or: [
+        { type: 'service' }, // Services don't have stock limits
+        { type: 'product', quantity: { $gt: 0 } }, // Products must have stock
+      ],
     };
 
     // Fetch products with pagination and populate only necessary seller fields
@@ -523,7 +537,7 @@ export class ProductService {
       const handieman = product.handieman as any;
       
       const seller = {
-        id: handieman?._id || null,
+        id: handieman?._id?.toString() || null,
         firstName: handieman?.first_name || '',
         lastName: handieman?.last_name || '',
         fullName: `${handieman?.first_name || ''} ${handieman?.last_name || ''}`.trim() || 'HandieMan',
@@ -585,7 +599,7 @@ export class ProductService {
       const handieman = item.handieman as any;
       
       const seller = {
-        id: handieman?._id || null,
+        id: handieman?._id?.toString() || null,
         firstName: handieman?.first_name || '',
         lastName: handieman?.last_name || '',
         fullName: `${handieman?.first_name || ''} ${handieman?.last_name || ''}`.trim() || 'HandieMan',

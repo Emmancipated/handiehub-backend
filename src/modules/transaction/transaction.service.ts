@@ -76,6 +76,169 @@ export class TransactionService {
     }
   }
 
+  /**
+   * Get paginated transactions for user wallet
+   */
+  async getUserTransactionsPaginated(
+    userId: string,
+    page: number = 1,
+    limit: number = 20,
+    filters?: { status?: string; category?: string; type?: string },
+  ): Promise<{
+    statusCode: number;
+    data: any[];
+    pagination: {
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    };
+  }> {
+    try {
+      const skip = (page - 1) * limit;
+      const query: any = { user: userId };
+
+      if (filters?.status) query.status = filters.status;
+      if (filters?.category) query.category = filters.category;
+      if (filters?.type) query.type = filters.type;
+
+      const [transactions, total] = await Promise.all([
+        this.transactionModel
+          .find(query)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .populate('order', 'orderId status')
+          .exec(),
+        this.transactionModel.countDocuments(query).exec(),
+      ]);
+
+      const formattedTransactions = transactions.map((txn: any) => ({
+        id: txn._id,
+        transactionId: txn.transactionId,
+        type: txn.type,
+        amount: txn.amount,
+        currency: txn.currency,
+        description: txn.description,
+        status: txn.status,
+        category: txn.category,
+        reference: txn.reference,
+        createdAt: txn.createdAt,
+        order: txn.order
+          ? {
+              orderId: txn.order.orderId,
+              status: txn.order.status,
+            }
+          : null,
+      }));
+
+      return {
+        statusCode: HttpStatus.OK,
+        data: formattedTransactions,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error) {
+      this.logger.error('Error fetching paginated transactions', error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user wallet info (balance + recent transactions)
+   */
+  async getUserWalletInfo(userId: string): Promise<{
+    statusCode: number;
+    data: {
+      balance: {
+        available: number;
+        pending: number;
+        total: number;
+        currency: string;
+      };
+      recentTransactions: any[];
+      stats: {
+        totalSpent: number;
+        totalRefunded: number;
+        pendingPayments: number;
+        completedOrders: number;
+      };
+    };
+  }> {
+    try {
+      const balance = await this.getBalance(userId);
+
+      // Get recent transactions (last 10)
+      const recentTransactions = await this.transactionModel
+        .find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate('order', 'orderId status')
+        .exec();
+
+      // Calculate stats
+      const allTransactions = await this.transactionModel.find({ user: userId }).exec();
+      
+      let totalSpent = 0;
+      let totalRefunded = 0;
+      let pendingPayments = 0;
+      let completedOrders = 0;
+
+      allTransactions.forEach((txn) => {
+        if (txn.type === 'debit' && txn.category === 'payment' && txn.status === 'completed') {
+          totalSpent += txn.amount;
+          completedOrders++;
+        }
+        if (txn.category === 'refund' && txn.status === 'completed') {
+          totalRefunded += txn.amount;
+        }
+        if (txn.status === 'pending') {
+          pendingPayments += txn.amount;
+        }
+      });
+
+      const formattedTransactions = recentTransactions.map((txn: any) => ({
+        id: txn._id,
+        transactionId: txn.transactionId,
+        type: txn.type,
+        amount: txn.amount,
+        currency: txn.currency,
+        description: txn.description,
+        status: txn.status,
+        category: txn.category,
+        reference: txn.reference,
+        createdAt: txn.createdAt,
+        order: txn.order
+          ? {
+              orderId: txn.order.orderId,
+              status: txn.order.status,
+            }
+          : null,
+      }));
+
+      return {
+        statusCode: HttpStatus.OK,
+        data: {
+          balance,
+          recentTransactions: formattedTransactions,
+          stats: {
+            totalSpent,
+            totalRefunded,
+            pendingPayments,
+            completedOrders,
+          },
+        },
+      };
+    } catch (error) {
+      this.logger.error('Error fetching user wallet info', error.stack);
+      throw error;
+    }
+  }
+
   async findOne(id: string): Promise<Transaction> {
     try {
       const transaction = await this.transactionModel

@@ -9,6 +9,27 @@ import { randomUUID } from 'crypto';
 
 export type UserDocument = HydratedDocument<User>;
 
+// Push token sub-schema
+@Schema({ _id: false })
+export class PushToken {
+  @Prop({ required: true })
+  token: string;
+
+  @Prop({ required: true, enum: ['expo', 'fcm', 'apns'] })
+  platform: string;
+
+  @Prop({ default: null })
+  deviceId: string;
+
+  @Prop({ default: Date.now })
+  createdAt: Date;
+
+  @Prop({ default: Date.now })
+  lastUsedAt: Date;
+}
+
+export const PushTokenSchema = SchemaFactory.createForClass(PushToken);
+
 @Schema()
 export class User {
   @Prop({
@@ -74,6 +95,30 @@ export class User {
 
   @Prop({ type: HandiemanProfileSchema, default: null })
   handiemanProfile: HandiemanProfile;
+
+  // Push notification tokens
+  @Prop({ type: [PushTokenSchema], default: [] })
+  pushTokens: PushToken[];
+
+  // Notification preferences
+  @Prop({ default: true })
+  notificationsEnabled: boolean;
+
+  @Prop({
+    type: Object,
+    default: {
+      orders: true,
+      reviews: true,
+      promotions: true,
+      messages: true,
+    },
+  })
+  notificationPreferences: {
+    orders: boolean;
+    reviews: boolean;
+    promotions: boolean;
+    messages: boolean;
+  };
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

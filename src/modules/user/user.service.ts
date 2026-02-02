@@ -21,12 +21,16 @@ import { stringify } from 'querystring';
 import { randomUUID } from 'crypto';
 import { UpdateHandiemanDto } from './dto/update-handieman.dto';
 import { UpdateOTPDto } from '../verification/dto/update-otp.dto';
+import { Order } from '../orders/schema/order.schema';
+import { Review } from '../review/schema/review.schema';
 
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
   constructor(
     @InjectModel(User.name) private userModel: Model<User>,
+    @InjectModel(Order.name) private orderModel: Model<Order>,
+    @InjectModel(Review.name) private reviewModel: Model<Review>,
     // private verificationTokenService: VerificationService,
     private emailService: EmailService,
     private readonly verificationService: VerificationService,
@@ -88,7 +92,7 @@ export class UserService {
     const salt = await bcrypt.genSalt();
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 2. Start Transaction (ACID Compliance)
+    // 2. Start Transaction (ACID Compliance) - Requires MongoDB Atlas/Replica Set
     const session = await this.connection.startSession();
     session.startTransaction();
 
@@ -102,7 +106,7 @@ export class UserService {
         role: [role],
       });
 
-      // Pass the session to the save method
+      // Pass the session to the save method for transaction
       const savedUser = await newUser.save({ session });
 
       // Commit the transaction
@@ -115,7 +119,6 @@ export class UserService {
 
       this.logger.log(`New user created: ${lowercaseEmail} with role: ${role}`);
 
-      // 4. Return the Entity
       return savedUser;
 
     } catch (error) {
@@ -305,5 +308,216 @@ export class UserService {
       .exec();
 
     return updatedUser;
+  }
+
+  /**
+   * Get user profile by ID
+   */
+  async getProfile(userId: string): Promise<any> {
+    const user = await this.userModel
+      .findById(userId)
+      .select('-password -otp -otpExpiresAt -verificationToken')
+      .exec();
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return {
+      statusCode: HttpStatus.OK,
+      data: {
+        id: user._id,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        fullName: `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+        email: user.email,
+        emailVerified: user.email_verified,
+        accountStatus: user.accountStatus,
+        roles: user.role,
+        registrationDate: user.registrationDate,
+        lastLogin: user.lastLogin,
+        // Client profile
+        clientProfile: user.clientProfile || null,
+        // Seller profile (if handieman)
+        handiemanProfile: user.handiemanProfile ? {
+          businessName: user.handiemanProfile.businessName,
+          profileImage: user.handiemanProfile.dp_url,
+          phoneNumber: user.handiemanProfile.phoneNumber,
+          country: user.handiemanProfile.country,
+          state: user.handiemanProfile.state,
+          city: user.handiemanProfile.city,
+          address: user.handiemanProfile.address,
+          description: user.handiemanProfile.description,
+          profession: user.handiemanProfile.profession,
+          isVerified: user.handiemanProfile.isVerified,
+          isFeatured: user.handiemanProfile.isFeatured,
+          isTopSeller: user.handiemanProfile.isTopSeller,
+        } : null,
+        isHandieman: user.role.includes('handieman'),
+        isAdmin: user.role.includes('admin'),
+      },
+    };
+  }
+
+  /**
+   * Get user stats (orders, reviews, etc.)
+   */
+  async getUserStats(userId: string): Promise<any> {
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const isHandieman = user.role.includes('handieman');
+
+    // Count orders (as buyer)
+    const buyerOrdersCount = await this.orderModel.countDocuments({
+      user: new Types.ObjectId(userId),
+      status: { $ne: 'payment_failed' },
+    }).exec();
+
+    // Count completed orders as buyer
+    const completedBuyerOrders = await this.orderModel.countDocuments({
+      user: new Types.ObjectId(userId),
+      status: 'completed',
+    }).exec();
+
+    // Count reviews written by user
+    const reviewsWritten = await this.reviewModel.countDocuments({
+      user: new Types.ObjectId(userId),
+    }).exec();
+
+    // Base stats for all users
+    const stats: any = {
+      orders: buyerOrdersCount,
+      completedOrders: completedBuyerOrders,
+      reviewsWritten: reviewsWritten,
+    };
+
+    // Add seller-specific stats if user is a handieman
+    if (isHandieman) {
+      // Count orders as seller
+      const sellerOrdersCount = await this.orderModel.countDocuments({
+        handieman: new Types.ObjectId(userId),
+        status: { $ne: 'payment_failed' },
+      }).exec();
+
+      // Count completed orders as seller
+      const completedSellerOrders = await this.orderModel.countDocuments({
+        handieman: new Types.ObjectId(userId),
+        status: 'completed',
+      }).exec();
+
+      // Count reviews received
+      const reviewsReceived = await this.reviewModel.countDocuments({
+        handieman: new Types.ObjectId(userId),
+      }).exec();
+
+      // Calculate average rating
+      const ratingAgg = await this.reviewModel.aggregate([
+        { $match: { handieman: new Types.ObjectId(userId) } },
+        { $group: { _id: null, avgRating: { $avg: '$rating' }, count: { $sum: 1 } } },
+      ]).exec();
+
+      const avgRating = ratingAgg.length > 0 ? ratingAgg[0].avgRating : 0;
+
+      // Total revenue (from completed orders)
+      const revenueAgg = await this.orderModel.aggregate([
+        { 
+          $match: { 
+            handieman: new Types.ObjectId(userId),
+            status: 'completed',
+          } 
+        },
+        { $group: { _id: null, totalRevenue: { $sum: '$amount' } } },
+      ]).exec();
+
+      const totalRevenue = revenueAgg.length > 0 ? revenueAgg[0].totalRevenue : 0;
+
+      stats.sellerStats = {
+        totalOrders: sellerOrdersCount,
+        completedOrders: completedSellerOrders,
+        reviewsReceived: reviewsReceived,
+        averageRating: Math.round(avgRating * 10) / 10,
+        totalRevenue: totalRevenue,
+      };
+    }
+
+    return {
+      statusCode: HttpStatus.OK,
+      data: stats,
+    };
+  }
+
+  /**
+   * Update user profile
+   */
+  async updateProfile(userId: string, updateData: any): Promise<any> {
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const allowedFields = ['first_name', 'last_name'];
+    const updateObj: any = {};
+
+    // Update basic fields
+    for (const field of allowedFields) {
+      if (updateData[field] !== undefined) {
+        updateObj[field] = updateData[field];
+      }
+    }
+
+    // Update client profile
+    if (updateData.clientProfile) {
+      updateObj.clientProfile = {
+        ...user.clientProfile,
+        ...updateData.clientProfile,
+      };
+    }
+
+    // Update handieman profile (if user is a handieman)
+    if (updateData.handiemanProfile && user.role.includes('handieman')) {
+      const handiemanFields = [
+        'businessName', 'dp_url', 'phoneNumber', 'country', 'state', 
+        'city', 'address', 'description', 'profession', 'responseTime'
+      ];
+      
+      const handiemanUpdate: any = {};
+      for (const field of handiemanFields) {
+        if (updateData.handiemanProfile[field] !== undefined) {
+          handiemanUpdate[`handiemanProfile.${field}`] = updateData.handiemanProfile[field];
+        }
+      }
+      
+      Object.assign(updateObj, handiemanUpdate);
+    }
+
+    if (Object.keys(updateObj).length === 0) {
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'No changes to update',
+        data: null,
+      };
+    }
+
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(userId, { $set: updateObj }, { new: true })
+      .select('-password -otp -otpExpiresAt -verificationToken')
+      .exec();
+
+    this.logger.log(`Profile updated for user ${userId}`);
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Profile updated successfully',
+      data: {
+        id: updatedUser._id,
+        firstName: updatedUser.first_name,
+        lastName: updatedUser.last_name,
+        fullName: `${updatedUser.first_name || ''} ${updatedUser.last_name || ''}`.trim(),
+        email: updatedUser.email,
+      },
+    };
   }
 }

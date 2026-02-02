@@ -14,7 +14,6 @@ import { WithdrawDto } from './dto/withdraw.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('transactions')
-// @UseGuards(JwtAuthGuard)
 export class TransactionController {
   constructor(private readonly transactionService: TransactionService) { }
 
@@ -24,18 +23,53 @@ export class TransactionController {
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard)
   findAll(@Request() req, @Query() filters: any) {
     const userId = req.user.userId;
     return this.transactionService.findAll(userId, filters);
   }
 
+  /**
+   * Get user's wallet info (balance + recent transactions + stats)
+   */
+  @Get('wallet')
+  @UseGuards(JwtAuthGuard)
+  getUserWallet(@Request() req) {
+    const userId = req.user.userId;
+    return this.transactionService.getUserWalletInfo(userId);
+  }
+
   @Get('wallet/balance')
+  @UseGuards(JwtAuthGuard)
   getBalance(@Request() req) {
     const userId = req.user.userId;
     return this.transactionService.getBalance(userId);
   }
 
+  /**
+   * Get paginated transactions for user
+   */
+  @Get('wallet/history')
+  @UseGuards(JwtAuthGuard)
+  getTransactionHistory(
+    @Request() req,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+    @Query('status') status?: string,
+    @Query('category') category?: string,
+    @Query('type') type?: string,
+  ) {
+    const userId = req.user.userId;
+    return this.transactionService.getUserTransactionsPaginated(
+      userId,
+      parseInt(page, 10),
+      parseInt(limit, 10),
+      { status, category, type },
+    );
+  }
+
   @Post('wallet/withdraw')
+  @UseGuards(JwtAuthGuard)
   requestWithdrawal(@Request() req, @Body() withdrawDto: WithdrawDto) {
     const userId = req.user.userId;
     return this.transactionService.requestWithdrawal(userId, withdrawDto);
