@@ -81,6 +81,28 @@ export class Order {
   })
   deliveryDate: Date;
 
+  @Prop({
+    type: {
+      label: { type: String },
+      fullName: { type: String, required: true },
+      phoneNumber: { type: String, required: true },
+      address: { type: String, required: true },
+      city: { type: String, required: true },
+      state: { type: String, required: true },
+      country: { type: String, default: 'Nigeria' },
+    },
+    _id: false,
+  })
+  deliveryAddress: {
+    label?: string;
+    fullName: string;
+    phoneNumber: string;
+    address: string;
+    city: string;
+    state: string;
+    country: string;
+  };
+
   @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Product' })
   product: Product;
 

@@ -16,8 +16,8 @@ export const updateProductSchema = z.object({
   subCategory: z.string().optional(),
   brandName: z.string().optional(),
 
-  // Media
-  images: z.array(z.string().url('Invalid URL in images')).optional(),
+  // Media - Accept both relative storage paths and full URLs
+  images: z.array(z.string().min(1, 'Image path cannot be empty')).optional(),
 
   // Pricing
   amount: z.number().min(0, 'Amount must be a positive number').optional(),

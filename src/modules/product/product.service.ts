@@ -175,8 +175,8 @@ export class ProductService {
         sku,
         slug,
 
-        // Status
-        status: status || 'pending',
+        // Status - auto-approve since there's no admin review flow yet
+        status: status || 'approved',
         isActive: isActive !== undefined ? isActive : true,
 
         // Seller
@@ -295,11 +295,13 @@ export class ProductService {
 
   async findOne(id: string): Promise<any> {
     // Try to find by _id first (if valid ObjectId), then by slug
+    // Only return approved, active products for public access
+    const activeFilter = { status: 'approved', isActive: true };
     let product;
     
     if (Types.ObjectId.isValid(id)) {
       product = await this.productModel
-        .findById(id)
+        .findOne({ _id: id, ...activeFilter })
         .populate({
           path: 'handieman',
           select: 'first_name last_name email phone handiemanProfile',
@@ -310,7 +312,7 @@ export class ProductService {
     // If not found by _id, try slug
     if (!product) {
       product = await this.productModel
-        .findOne({ slug: id })
+        .findOne({ slug: id, ...activeFilter })
         .populate({
           path: 'handieman',
           select: 'first_name last_name email phone handiemanProfile',
@@ -458,6 +460,8 @@ export class ProductService {
       this.brandModel.find({ name: regex }).limit(5).lean(),
       this.productModel
         .find({
+          status: 'approved',
+          isActive: true,
           $or: [{ name: regex }, { description: regex }, { tags: regex }],
         })
         .limit(5)

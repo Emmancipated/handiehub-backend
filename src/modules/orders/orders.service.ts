@@ -113,6 +113,7 @@ export class OrdersService {
 
       // 5. Create the order - payment already verified at this point
       const paymentReference = (createOrderDto as any).paymentReference;
+      const deliveryAddress = (createOrderDto as any).deliveryAddress || null;
       
       const createdOrder = new this.orderModel({
         product: productId,
@@ -122,6 +123,7 @@ export class OrdersService {
         paymentStatus: paymentReference ? 'paid' : 'pending',
         paymentReference: paymentReference || null,
         deliveryDate,
+        deliveryAddress,
         handieman,
         user,
         orderId,

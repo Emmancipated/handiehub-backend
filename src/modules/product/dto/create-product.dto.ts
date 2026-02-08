@@ -13,13 +13,11 @@ const baseSchema = z.object({
   subCategory: z.string().optional(),
   brandName: z.string().optional(), // Use "-" for unbranded
 
-  // Media - Allow any string that starts with http(s)://
+  // Media - Accept both relative storage paths (e.g. "dev/product-images/userId/file.jpg")
+  // and full URLs (legacy data starting with http/https)
   images: z
     .array(
-      z.string().refine(
-        (url) => url.startsWith('http://') || url.startsWith('https://'),
-        { message: 'Invalid image URL - must start with http:// or https://' }
-      )
+      z.string().min(1, 'Image path cannot be empty')
     )
     .min(1, 'At least 1 image is required')
     .max(10, 'Maximum 10 images allowed'),
@@ -40,7 +38,8 @@ const baseSchema = z.object({
   tags: z.array(z.string()).optional(),
 
   // Status
-  status: z.enum(['draft', 'pending', 'approved', 'declined', 'archived']).default('pending'),
+  // Auto-approve for now (no admin review panel yet). Change back to 'pending' when admin approval flow is added.
+  status: z.enum(['draft', 'pending', 'approved', 'declined', 'archived']).default('approved'),
   isActive: z.boolean().default(true),
 
   // Seller - Optional in request, will be set from JWT token on the backend
@@ -104,10 +103,7 @@ export const quickCreateProductSchema = z.object({
   amount: z.number().positive(),
   images: z
     .array(
-      z.string().refine(
-        (url) => url.startsWith('http://') || url.startsWith('https://'),
-        { message: 'Invalid image URL' }
-      )
+      z.string().min(1, 'Image path cannot be empty')
     )
     .min(1),
   handieman: z.string(),

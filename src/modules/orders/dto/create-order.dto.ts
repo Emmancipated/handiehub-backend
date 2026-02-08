@@ -1,6 +1,17 @@
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
+// Delivery address schema (embedded in order)
+const deliveryAddressSchema = z.object({
+  label: z.string().optional(),
+  fullName: z.string().min(1, 'Full name is required'),
+  phoneNumber: z.string().min(1, 'Phone number is required'),
+  address: z.string().min(1, 'Address is required'),
+  city: z.string().min(1, 'City is required'),
+  state: z.string().min(1, 'State is required'),
+  country: z.string().default('Nigeria'),
+});
+
 export const createOrderchema = z
   .object({
     productId: z.string().refine((id) => mongoose.Types.ObjectId.isValid(id), {
@@ -23,6 +34,8 @@ export const createOrderchema = z
     }).optional(),
     // Payment reference from Paystack - links payment to order
     paymentReference: z.string().optional(),
+    // Delivery address for the order
+    deliveryAddress: deliveryAddressSchema.optional(),
   });
 
 export type CreateOrderDto = z.infer<typeof createOrderchema>;
